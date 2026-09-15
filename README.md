@@ -40,6 +40,7 @@ Un utilisateur peut cumuler plusieurs rôles, chacun avec son propre périmètre
 |-------|-------------|
 | `/` | Accueil, hub d'authentification. |
 | `/login`, `/auth/callback`, `/logout` | Flux d'authentification Microsoft Entra ID. |
+| `/dev/login` | Connexion de développement par `POST` (uniquement avec `AUTH_MODE=dev`, voir [Authentification en mode développement](#authentification-en-mode-développement)). |
 | `/dashboard/student` | Dashboard étudiant. |
 | `/dashboard/program-manager` | Dashboard responsable de programme. |
 | `/dashboard/facilitator` | Dashboard animateur. |
@@ -374,7 +375,7 @@ OceENS/
 ├── .gitignore                    # Fichiers et dossiers ignorés par Git
 │
 ├── core/                         # Accès bas niveau et sécurité
-│   ├── auth.py                   #   Authentification Microsoft Entra ID (login, logout, callback)
+│   ├── auth.py                   #   Authentification Microsoft Entra ID (login, logout, callback) et connexion de développement
 │   ├── database.py               #   Moteur SQLite et dépendance SessionDep
 │   ├── security.py               #   Rôles, périmètres, contrôle d'accès
 │   ├── dependencies.py           #   templates Jinja et logger partagés
@@ -480,6 +481,37 @@ L'authentification seule n'autorise aucune action métier : chaque route vérifi
 
 ---
 
+## Authentification en mode développement
+
+Pour travailler sur un fork sans application Azure, la **connexion de développement** permet de se connecter en tant que n'importe quel utilisateur, sans preuve d'identité. Elle ne doit **jamais** servir en production.
+
+| Variable | Rôle |
+|----------|------|
+| `AUTH_MODE` | `entra` (défaut) ou `dev`, sans tenir compte de la casse ni des espaces. Toute autre valeur arrête l'application au démarrage. En `dev`, les variables `ENTRA_*` ne sont pas nécessaires. |
+| `DEV_LOGIN_KEY` | Optionnelle, mode `dev` uniquement. Si elle est définie, chaque connexion doit la fournir (champ `key`), sinon `401`. Si elle ne l'est pas, la connexion est ouverte. Ignorée (avec un avertissement) en `entra`. |
+| `ALLOWED_DOMAINS` | S'applique aussi en `dev` (`403` pour un autre domaine) ; vaut `epf.fr,epfedu.fr` par défaut dans ce mode. |
+
+En mode `dev`, le cookie de session n'est plus limité à HTTPS (`http://localhost` fonctionne), `/login` redirige vers `/dev/login`, `/auth/callback` n'existe pas et `/logout` efface la session puis renvoie vers `/`. Un avertissement est journalisé au démarrage.
+
+`POST /dev/login` attend un formulaire avec `email`, `name` (optionnel) et `key` (si `DEV_LOGIN_KEY` est définie). L'utilisateur est récupéré ou créé comme au retour d'Entra : un mail inconnu devient un nouvel étudiant. Sans `name`, le nom affiché est construit depuis le mail (`bob.leponge@epfedu.fr` → « Bob Leponge »). Une nouvelle connexion remplace la session : c'est ainsi qu'on change d'utilisateur.
+
+```bash
+AUTH_MODE=dev DEV_LOGIN_KEY=ma-cle uvicorn main:app
+
+# Se connecter en tant qu'admin du seed ; -c enregistre le cookie de session
+curl -i -c cookies.txt \
+  -d email=antoine.gademer@epf.fr -d key=ma-cle \
+  http://localhost:8000/dev/login
+
+# Réutiliser le cookie (-b) pour les requêtes suivantes
+curl -b cookies.txt -c cookies.txt -L http://localhost:8000/
+```
+
+> [!WARNING]
+> Le mode `dev` ne vérifie pas `SECRET_KEY`. Avec la valeur par défaut du dépôt, n'importe qui peut forger un cookie de session et contourner `DEV_LOGIN_KEY` : le mode `dev` l'accepte, car il ne sert qu'en local.
+
+---
+
 ## Fonctionnalités notables
 
 ### Analytique des enseignants
@@ -519,8 +551,9 @@ validé (format + domaine autorisé) et les doublons sont refusés.
 ## Checklist de déploiement
 
 - [ ] `.env` créé avec les vraies credentials Azure et une `SECRET_KEY` dédiée
+- [ ] `AUTH_MODE` non défini ou `entra`
 - [ ] Certificat SSL valide (Let's Encrypt ou équivalent)
-- [ ] `https_only=True` dans le SessionMiddleware
+- [ ] `https_only=True` dans le SessionMiddleware (automatique hors `AUTH_MODE=dev`)
 - [ ] Base de données présente (`database/db_oceens.db`) ou volume Docker monté
 - [ ] Variables d'environnement sécurisées, y compris `LLM_API_KEY`
 - [ ] **Docker Compose** : `.env` chargé via `env_file`, jamais copié dans l'image ; `LOCAL_DATABASE_DIR` pointant vers le bon répertoire de base

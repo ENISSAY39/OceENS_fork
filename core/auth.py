@@ -20,6 +20,12 @@ Ce module gère tout le flux OAuth 2.0 / OpenID Connect avec Microsoft :
 
 Flux typique :
 Utilisateur → /login → Microsoft Login → /auth/callback → Dashboard
+
+Connexion de développement (`AUTH_MODE=dev`) :
+Aucun fournisseur d'identité : `POST /dev/login` (champs `email`, `name`
+optionnel, `key`) connecte directement en tant que l'utilisateur choisi.
+`/login` redirige vers `/dev/login`, `/auth/callback` n'existe pas et
+`/logout` se contente d'effacer la session. Ne jamais utiliser en production.
 """
 
 from sqlmodel import select, func
@@ -29,26 +35,50 @@ from models import (
 )
 from dotenv import load_dotenv
 
+import hmac
 import uuid
 import requests
 import msal
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 import logging
 
 import os
 load_dotenv()
 
+logger = logging.getLogger("uvicorn")
+
+# ┌─ Mode d'authentification ─────────────────────────────────────────────────┐
+# "entra" (défaut) : Microsoft Entra ID ; "dev" : connexion de développement
+AUTH_MODE = os.environ.get("AUTH_MODE", "entra").strip().lower() or "entra"
+if AUTH_MODE not in ("entra", "dev"):
+    logger.critical(f"INVALID AUTH_MODE {AUTH_MODE!r}: expected 'entra' or 'dev'")
+    exit()
+
+# Clé optionnelle exigée par POST /dev/login (vide = non définie)
+DEV_LOGIN_KEY = os.environ.get("DEV_LOGIN_KEY") or None
+if AUTH_MODE == "dev":
+    logger.warning(
+        "AUTH_MODE=dev: connexion de développement active, NE PAS UTILISER EN PRODUCTION "
+        f"(DEV_LOGIN_KEY {'définie' if DEV_LOGIN_KEY else 'non définie : connexion ouverte'})"
+    )
+elif DEV_LOGIN_KEY:
+    logger.warning("DEV_LOGIN_KEY est ignorée car AUTH_MODE=entra")
+# └───────────────────────────────────────────────────────────────────────────┘
+
 # ┌─ Domaines autorisés ──────────────────────────────────────────────────────┐
-ALLOWED_DOMAINS = os.environ.get("ALLOWED_DOMAINS", "").split(",")
+ALLOWED_DOMAINS = (
+    os.environ.get("ALLOWED_DOMAINS")
+    or ("epf.fr,epfedu.fr" if AUTH_MODE == "dev" else "")
+).split(",")
 # Format : "example.com,company.fr" en variable d'environnement
 # Accepte des domaines multiples séparés par des virgules
 # └───────────────────────────────────────────────────────────────────────────┘
 
-logger = logging.getLogger("uvicorn")
 
-
-router = APIRouter()
+# Un seul des deux routeurs est exposé (`router`, en bas du module)
+entra_router = APIRouter()
+dev_router = APIRouter()
 
 # ┌─ Configuration Azure Entra ID (variables d'environnement) ──────────────┐
 # Ces informations viennent du portail Azure Entra ID
@@ -57,7 +87,7 @@ CLIENT_ID = os.environ.get("ENTRA_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("ENTRA_CLIENT_SECRET")
 # Clé secrète pour l'authentification (confidentielle)
 TENANT_ID = os.environ.get("ENTRA_TENANT_ID")
-if CLIENT_ID == None or CLIENT_SECRET == None or TENANT_ID == None:
+if AUTH_MODE == "entra" and (CLIENT_ID == None or CLIENT_SECRET == None or TENANT_ID == None):
     logger.critical("MISSING ENTRA INFO. Please check .env")
     exit()
 # ID du "tenant" (organisation) dans Azure Entra
@@ -108,7 +138,7 @@ def _is_email_allowed(email: str) -> bool:
 # ┌─ Route 1/3 : Initier la connexion ────────────────────────────────────────┐
 
 
-@router.get("/login")
+@entra_router.get("/login")
 async def login(request: Request):
     """
     Initié le flux de connexion OAuth 2.0 avec Microsoft
@@ -147,7 +177,7 @@ async def login(request: Request):
 # ┌─ Route 2/3 : Callback après authentification Microsoft ─────────────────────┐
 
 
-@router.get("/auth/callback")
+@entra_router.get("/auth/callback")
 async def auth_callback(request: Request):
     """
     Callback endpoint (la route où Microsoft redirige l'utilisateur après authentification)
@@ -288,7 +318,7 @@ def get_current_user(request: Request) -> dict | None:
 # ┌─ Route 3/3 : Déconnexion ──────────────────────────────────────────────────┐
 
 
-@router.get("/logout")
+@entra_router.get("/logout")
 async def logout(request: Request):
     """
     Déconnexion de l'utilisateur
@@ -316,5 +346,72 @@ async def logout(request: Request):
     response.delete_cookie("session_token")
     return response
 
+
+# └───────────────────────────────────────────────────────────────────────────┘
+
+# ┌─ Connexion de développement (AUTH_MODE=dev) ───────────────────────────────┐
+
+
+def _name_from_email(email: str) -> str:
+    """Construit un nom affichable depuis le mail : bob.leponge@… → "Bob Leponge"."""
+    local_part = email.split("@")[0].replace(".", " ").replace("_", " ")
+    return " ".join(local_part.split()).title()
+
+
+@dev_router.get("/login")
+async def dev_login_redirect():
+    """En mode dev, la connexion passe par /dev/login."""
+    return RedirectResponse("/dev/login")
+
+
+@dev_router.post("/dev/login")
+async def dev_login(
+    request: Request,
+    email: str = Form(...),
+    name: str | None = Form(None),
+    key: str | None = Form(None),
+):
+    """
+    Connecte directement en tant que l'utilisateur `email`, sans preuve d'identité
+
+    Étapes :
+    1. Si DEV_LOGIN_KEY est définie, vérifier `key` (comparaison à temps constant)
+    2. Vérifier le domaine de l'email (comme au callback Entra)
+    3. Récupérer ou créer l'utilisateur (mail inconnu = nouvel étudiant)
+    4. Remplacer la session par {name, email} puis rediriger vers la racine
+    """
+    from core.database import get_or_create_user
+
+    if DEV_LOGIN_KEY and not hmac.compare_digest(
+        (key or "").encode(), DEV_LOGIN_KEY.encode()
+    ):
+        return Response("Clé de connexion de développement invalide", status_code=401)
+
+    email = email.strip()
+    if "@" not in email or not _is_email_allowed(email):
+        return Response(
+            f"Accès refusé : domaine non autorisé. Domaines acceptés: {', '.join(ALLOWED_DOMAINS)}",
+            status_code=403,
+        )
+
+    get_or_create_user(email)
+
+    # Une nouvelle connexion écrase la session : c'est ainsi qu'on change d'utilisateur
+    request.session.clear()
+    request.session["user"] = {
+        "name": (name or "").strip() or _name_from_email(email),
+        "email": email,
+    }
+    return RedirectResponse(url="/", status_code=303)
+
+
+@dev_router.get("/logout")
+async def dev_logout(request: Request):
+    """En mode dev, efface la session sans passer par la déconnexion Microsoft."""
+    request.session.clear()
+    return RedirectResponse(url="/")
+
+
+router = dev_router if AUTH_MODE == "dev" else entra_router
 
 # └───────────────────────────────────────────────────────────────────────────┘

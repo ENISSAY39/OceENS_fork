@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
-from core.auth import router as auth_router
+from core.auth import AUTH_MODE, router as auth_router
 from core.database import create_db_and_tables
 from core.dependencies import logger
 from core.seed import seed_all_if_necessary
@@ -110,7 +110,8 @@ def create_app():
         secret_key=os.environ.get(
             "SECRET_KEY", "Y3mNqRjGQixkKjF9GXBCbOw2fHyC1wA3wqbJcQoIxt0="
         ),
-        https_only=True,
+        # En mode dev, le cookie doit passer en http://localhost
+        https_only=AUTH_MODE != "dev",
         same_site="lax",
     )
 
