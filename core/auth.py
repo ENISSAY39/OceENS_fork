@@ -67,6 +67,10 @@ if AUTH_MODE == "dev":
     )
 elif DEV_LOGIN_KEY:
     logger.warning("DEV_LOGIN_KEY est ignorée car AUTH_MODE=entra")
+
+# Exposés à tous les templates (bandeau du mode dev dans le header partagé)
+templates.env.globals["auth_mode"] = AUTH_MODE
+templates.env.globals["dev_login_key_set"] = bool(DEV_LOGIN_KEY)
 # └───────────────────────────────────────────────────────────────────────────┘
 
 # ┌─ Domaines autorisés ──────────────────────────────────────────────────────┐

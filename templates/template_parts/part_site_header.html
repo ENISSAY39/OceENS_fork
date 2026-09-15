@@ -1,3 +1,12 @@
+{% if auth_mode == "dev" %}
+{% set dev_banner_user = user if (user is defined and user) else request.session.get("user") %}
+<div class="dev-mode-banner" role="status">
+  <strong>Mode développement : connexion sans authentification.</strong>
+  {% if dev_banner_user %}Connecté en tant que <code>{{ dev_banner_user.email }}</code>{% else %}Non connecté{% endif %}
+  · <a href="/dev/login">Changer d'utilisateur</a>
+  {% if not dev_login_key_set %}· accès ouvert à tous{% endif %}
+</div>
+{% endif %}
 <header class="site-header">
   <div class="site-header__left">
     <a class="site-header__brand" href="/" aria-label="Accueil OcéEns">

@@ -1,4 +1,24 @@
 /* Shared OcéEns site header. */
+
+/* Bandeau AUTH_MODE=dev, non refermable */
+.dev-mode-banner {
+    padding: 8px 24px;
+    color: #ffffff;
+    background: #c62828;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.dev-mode-banner code {
+    font-weight: 600;
+}
+
+.dev-mode-banner a {
+    color: #ffffff;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
 body .site-header {
     position: sticky;
     top: 0;
