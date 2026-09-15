@@ -47,6 +47,7 @@ from core.dependencies import templates
 import logging
 
 import os
+import sys
 load_dotenv()
 
 logger = logging.getLogger("uvicorn")
@@ -56,7 +57,7 @@ logger = logging.getLogger("uvicorn")
 AUTH_MODE = os.environ.get("AUTH_MODE", "entra").strip().lower() or "entra"
 if AUTH_MODE not in ("entra", "dev"):
     logger.critical(f"INVALID AUTH_MODE {AUTH_MODE!r}: expected 'entra' or 'dev'")
-    exit()
+    sys.exit(1)
 
 # Clé optionnelle exigée par POST /dev/login (vide = non définie)
 DEV_LOGIN_KEY = os.environ.get("DEV_LOGIN_KEY") or None
@@ -96,7 +97,7 @@ CLIENT_SECRET = os.environ.get("ENTRA_CLIENT_SECRET")
 TENANT_ID = os.environ.get("ENTRA_TENANT_ID")
 if AUTH_MODE == "entra" and (CLIENT_ID == None or CLIENT_SECRET == None or TENANT_ID == None):
     logger.critical("MISSING ENTRA INFO. Please check .env")
-    exit()
+    sys.exit(1)
 # ID du "tenant" (organisation) dans Azure Entra
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 # URL de base pour toutes les demandes d'authentification Microsoft
