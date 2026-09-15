@@ -40,7 +40,7 @@ Un utilisateur peut cumuler plusieurs rôles, chacun avec son propre périmètre
 |-------|-------------|
 | `/` | Accueil, hub d'authentification. |
 | `/login`, `/auth/callback`, `/logout` | Flux d'authentification Microsoft Entra ID. |
-| `/dev/login` | Connexion de développement par `POST` (uniquement avec `AUTH_MODE=dev`, voir [Authentification en mode développement](#authentification-en-mode-développement)). |
+| `/dev/login` | Connexion de développement : page de choix de l'utilisateur en `GET`, connexion en `POST` (uniquement avec `AUTH_MODE=dev`, voir [Authentification en mode développement](#authentification-en-mode-développement)). |
 | `/dashboard/student` | Dashboard étudiant. |
 | `/dashboard/program-manager` | Dashboard responsable de programme. |
 | `/dashboard/facilitator` | Dashboard animateur. |
@@ -494,6 +494,8 @@ Pour travailler sur un fork sans application Azure, la **connexion de développe
 En mode `dev`, le cookie de session n'est plus limité à HTTPS (`http://localhost` fonctionne), `/login` redirige vers `/dev/login`, `/auth/callback` n'existe pas et `/logout` efface la session puis renvoie vers `/`. Un avertissement est journalisé au démarrage.
 
 `POST /dev/login` attend un formulaire avec `email`, `name` (optionnel) et `key` (si `DEV_LOGIN_KEY` est définie). L'utilisateur est récupéré ou créé comme au retour d'Entra : un mail inconnu devient un nouvel étudiant. Sans `name`, le nom affiché est construit depuis le mail (`bob.leponge@epfedu.fr` → « Bob Leponge »). Une nouvelle connexion remplace la session : c'est ainsi qu'on change d'utilisateur.
+
+Dans un navigateur, `GET /dev/login` affiche la liste des utilisateurs de la base, regroupés par nom de rôle sans périmètre (un utilisateur sans rôle apparaît sous `student`, un utilisateur à plusieurs rôles sous chacun d'eux). Un clic connecte en tant que l'utilisateur choisi ; un champ libre permet d'utiliser une autre adresse, avec un nom optionnel. Si `DEV_LOGIN_KEY` est définie, un champ de clé unique s'affiche et sert à toutes les connexions de la page ; la clé n'est jamais stockée en session. On revient sur cette page pour changer d'utilisateur.
 
 ```bash
 AUTH_MODE=dev DEV_LOGIN_KEY=ma-cle uvicorn main:app

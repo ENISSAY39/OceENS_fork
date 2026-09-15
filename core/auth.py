@@ -22,7 +22,8 @@ Flux typique :
 Utilisateur → /login → Microsoft Login → /auth/callback → Dashboard
 
 Connexion de développement (`AUTH_MODE=dev`) :
-Aucun fournisseur d'identité : `POST /dev/login` (champs `email`, `name`
+Aucun fournisseur d'identité : `GET /dev/login` affiche une page listant les
+utilisateurs par rôle, et `POST /dev/login` (champs `email`, `name`
 optionnel, `key`) connecte directement en tant que l'utilisateur choisi.
 `/login` redirige vers `/dev/login`, `/auth/callback` n'existe pas et
 `/logout` se contente d'effacer la session. Ne jamais utiliser en production.
@@ -40,7 +41,9 @@ import uuid
 import requests
 import msal
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from core.database import SessionDep
+from core.dependencies import templates
 import logging
 
 import os
@@ -362,6 +365,50 @@ def _name_from_email(email: str) -> str:
 async def dev_login_redirect():
     """En mode dev, la connexion passe par /dev/login."""
     return RedirectResponse("/dev/login")
+
+
+# Ordre d'affichage des groupes ; un rôle inconnu est ajouté à la fin
+_DEV_LOGIN_ROLE_ORDER = ["admin", "program_manager", "campus_manager", "facilitator", "student"]
+
+
+@dev_router.get("/dev/login", response_class=HTMLResponse)
+def dev_login_page(request: Request, session: SessionDep):
+    """
+    Page de connexion de développement : choisir en tant que qui se connecter
+
+    Les utilisateurs sont regroupés par nom de rôle, sans périmètre
+    (`program_manager:INFO` → `program_manager`). Sans ligne `roles`, un
+    utilisateur est rangé sous `student` ; avec plusieurs rôles, il apparaît
+    dans chaque groupe. Chaque formulaire poste vers `POST /dev/login`.
+    """
+    rows = session.exec(
+        select(User.mail, Role.role)
+        .join(Role, Role.user_id == User.user_id, isouter=True)
+        .where(User.mail != None)
+        .order_by(User.mail)
+    ).all()
+
+    groups: dict[str, list[str]] = {}
+    for mail, role in rows:
+        role_name = role.split(":")[0] if role else "student"
+        mails = groups.setdefault(role_name, [])
+        if mail not in mails:
+            mails.append(mail)
+
+    rank = {role_name: i for i, role_name in enumerate(_DEV_LOGIN_ROLE_ORDER)}
+    ordered_groups = sorted(
+        groups.items(),
+        key=lambda item: (rank.get(item[0], len(rank)), item[0]),
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="dev_login.html",
+        context={
+            "role_groups": ordered_groups,
+            "key_required": bool(DEV_LOGIN_KEY),
+            "user": get_current_user(request),
+        },
+    )
 
 
 @dev_router.post("/dev/login")

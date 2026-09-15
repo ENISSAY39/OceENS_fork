@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OcéEns – Connexion de développement</title>
+
+    <style>
+        body {
+            font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #333333;
+            margin: 0;
+        }
+
+        main {
+            max-width: 760px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .dev-warning {
+            background: #fdecea;
+            border: 1px solid #df231d;
+            color: #8a1a16;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+
+        section {
+            margin-bottom: 28px;
+        }
+
+        h2 {
+            font-size: 1.1rem;
+            color: #470a68;
+            margin-bottom: 10px;
+        }
+
+        .dev-users {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .dev-users form {
+            margin: 0;
+        }
+
+        button {
+            font: inherit;
+            padding: 8px 16px;
+            border-radius: 50px;
+            border: none;
+            cursor: pointer;
+            background-color: #470a68;
+            color: #ffffff;
+        }
+
+        .dev-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 12px;
+            max-width: 400px;
+        }
+
+        .dev-field input {
+            font: inherit;
+            padding: 8px;
+        }
+    </style>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/responsive.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/site_header.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/theme.css') }}" />
+</head>
+
+<body>
+
+    {% set header_title_fr = "Connexion de développement" %}
+    {% include 'template_parts/part_site_header.html' %}
+
+    <main>
+        <p class="dev-warning">
+            Connexion sans fournisseur d'identité (<code>AUTH_MODE=dev</code>) : ne jamais utiliser en production.
+            Se connecter à nouveau remplace la session courante.
+        </p>
+
+        {% if key_required %}
+        <section>
+            <h2>Clé de connexion</h2>
+            <div class="dev-field">
+                <label for="dev-login-key">Clé (<code>DEV_LOGIN_KEY</code>), exigée pour toutes les connexions</label>
+                <input id="dev-login-key" type="password" autocomplete="off" />
+            </div>
+        </section>
+        {% endif %}
+
+        {% for role_name, mails in role_groups %}
+        <section>
+            <h2>{{ role_name }}</h2>
+            <div class="dev-users">
+                {% for mail in mails %}
+                <form method="post" action="/dev/login">
+                    <input type="hidden" name="email" value="{{ mail }}" />
+                    {% if key_required %}<input type="hidden" name="key" />{% endif %}
+                    <button type="submit">{{ mail }}</button>
+                </form>
+                {% endfor %}
+            </div>
+        </section>
+        {% endfor %}
+
+        <section>
+            <h2>Autre adresse</h2>
+            <form method="post" action="/dev/login">
+                <div class="dev-field">
+                    <label for="dev-login-email">Adresse mail (inconnue = nouvel étudiant)</label>
+                    <input id="dev-login-email" type="email" name="email" required />
+                </div>
+                <div class="dev-field">
+                    <label for="dev-login-name">Nom affiché (optionnel)</label>
+                    <input id="dev-login-name" type="text" name="name" />
+                </div>
+                {% if key_required %}<input type="hidden" name="key" />{% endif %}
+                <button type="submit">Se connecter</button>
+            </form>
+        </section>
+    </main>
+
+    {% if key_required %}
+    <script>
+        // La clé est saisie une fois et recopiée dans le formulaire envoyé
+        document.addEventListener('submit', (event) => {
+            const keyInput = event.target.querySelector('input[name="key"]');
+            if (keyInput) {
+                keyInput.value = document.getElementById('dev-login-key').value;
+            }
+        });
+    </script>
+    {% endif %}
+
+</body>
+
+</html>
