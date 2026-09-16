@@ -8,22 +8,51 @@ et on observe ce qu'elle répond et avec quel code de sortie.
 À dérouler avant de proposer un changement qui touche au démarrage, à la
 configuration, aux dépendances ou au conteneur.
 
+## Conventions selon le système
+
+Les commandes sont données pour **Windows (PowerShell)** puis pour **macOS /
+Linux (bash)**. Seules quatre choses changent :
+
+| | Windows (PowerShell) | macOS / Linux (bash) |
+|---|---|---|
+| Interpréteur de l'environnement virtuel | `.venv\Scripts\python.exe` | `.venv/bin/python` |
+| Définir une variable pour une commande | `$env:VAR = "x"` puis `Remove-Item Env:VAR` | `VAR=x commande` |
+| Lire le code de sortie | `$LASTEXITCODE` | `echo $?` |
+| Copier / renommer un fichier | `Copy-Item`, `Rename-Item` | `cp`, `mv` |
+
+Les commandes appellent l'interpréteur **par son chemin** (`.venv\Scripts\python.exe`)
+plutôt que d'activer l'environnement : sous Windows, `Activate.ps1` est bloqué
+par défaut par la politique d'exécution de PowerShell, et ce n'est pas le sujet
+de ce test.
+
 ## Vérifications statiques
 
-```bash
-python -m compileall -q main.py \
-  sondage_loader.py survey_loader_from_xlsx.py summaries_generator_daemon.py \
-  core models routers services
+Identique sur les deux systèmes (une seule ligne, sans continuation) :
+
+```
+python -m compileall -q main.py sondage_loader.py survey_loader_from_xlsx.py summaries_generator_daemon.py core models routers services
 git diff --check
 ```
 
 ## 1. Démarrage local, sans credentials
 
-Dans un clone neuf de la branche, avec un environnement virtuel vide :
+Dans un clone neuf de la branche, avec un environnement virtuel vide.
+
+**Windows (PowerShell)**
+
+```powershell
+Copy-Item .env.example .env
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\uvicorn.exe main:app --port 8000
+```
+
+**macOS / Linux (bash)**
 
 ```bash
 cp .env.example .env
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn main:app --port 8000
 ```
 
@@ -40,36 +69,65 @@ ne contiennent ni erreur ni trace d'exception.
 
 ## 2. Démarrage avec Docker
 
-Avec le même `.env`, sur une machine Linux :
+Il faut un **démon Docker en cours d'exécution** — Docker Desktop sous Windows
+(avec le backend WSL 2) comme sous macOS, le démon natif sous Linux. La
+commande est la même partout :
 
-```bash
+```
 docker compose up --build
 ```
 
-Attendu : l'image se construit et `/` répond. Sans `.env`, `docker compose`
-échoue avec `env file .env not found` — c'est voulu, la première commande
-d'un fork est `cp .env.example .env`.
+Attendu : l'image se construit, le conteneur démarre sans redémarrer en
+boucle, et `/`, `/dev/login` et `/nope` répondent comme à l'étape 1.
+
+Sans `.env`, `docker compose` échoue avec `env file .env not found` — c'est
+voulu, la première commande d'un fork est la copie de `.env.example`.
+
+Pour arrêter et nettoyer :
+
+```
+docker compose down
+```
 
 ## 3. Codes de sortie sur configuration invalide
 
 Une configuration de démarrage invalide doit sortir en **code 1**, pour qu'un
-superviseur ou une CI voie l'échec :
+superviseur ou une CI voie l'échec.
 
-```bash
-AUTH_MODE=bogus .venv/bin/python -c "import main"; echo $?   # 1
+Le `.env` doit être écarté pour le second cas : `load_dotenv()` y relirait
+`AUTH_MODE=dev` et l'application démarrerait normalement, en code 0.
+
+**Windows (PowerShell)**
+
+```powershell
+# AUTH_MODE invalide
+$env:AUTH_MODE = "bogus"
+.venv\Scripts\python.exe -c "import main"; $LASTEXITCODE   # 1
+Remove-Item Env:AUTH_MODE
+
+# ENTRA_* manquantes, sans .env
+Rename-Item .env .env.bak
+'AUTH_MODE','ENTRA_CLIENT_ID','ENTRA_CLIENT_SECRET','ENTRA_TENANT_ID' |
+  ForEach-Object { Remove-Item "Env:$_" -ErrorAction SilentlyContinue }
+.venv\Scripts\python.exe -c "import main"; $LASTEXITCODE   # 1
+Rename-Item .env.bak .env
 ```
 
+**macOS / Linux (bash)**
+
 ```bash
-# Le .env doit être écarté : load_dotenv() y relirait AUTH_MODE=dev et
-# l'application démarrerait normalement (code 0).
+# AUTH_MODE invalide
+AUTH_MODE=bogus .venv/bin/python -c "import main"; echo $?   # 1
+
+# ENTRA_* manquantes, sans .env
 mv .env .env.bak
 env -u AUTH_MODE -u ENTRA_CLIENT_ID -u ENTRA_CLIENT_SECRET -u ENTRA_TENANT_ID \
   .venv/bin/python -c "import main"; echo $?   # 1
 mv .env.bak .env
 ```
 
-Attendu : la ligne de log `INVALID AUTH_MODE 'bogus'` pour la première,
-`MISSING ENTRA INFO. Please check .env` pour la seconde. En témoin,
+Attendu : la ligne de log `INVALID AUTH_MODE 'bogus'` pour le premier cas,
+`MISSING ENTRA INFO. Please check .env` pour le second. En témoin,
 `AUTH_MODE=dev` sort en 0.
 
 ## 4. Absence de clé LLM
@@ -89,23 +147,18 @@ connectant avec son compte EPF, puis la renseigne dans son `.env` :
 LLM_API_KEY=<votre clé>
 ```
 
-Vérification rapide, sans passer par l'interface :
+Vérification rapide, sans passer par l'interface. La commande tient sur une
+ligne et fonctionne dans les deux shells — seul le chemin de l'interpréteur
+change (`.venv\Scripts\python.exe` sous Windows) :
 
-```bash
-.venv/bin/python -c "
-from types import SimpleNamespace
-from services import llm_client as c
-p = SimpleNamespace(name='Ollama EPF', api_type='ollama',
-                    base_url='https://locallm.mde.epf.fr/ollama',
-                    api_key_env='LLM_API_KEY', default_model='gemma4:26b')
-print(c.check_model(p, 'gemma4:26b'))
-print(c.ping_generation(p, 'gemma4:26b'))
-"
+```
+.venv/bin/python -c "from types import SimpleNamespace; from services import llm_client as c; p = SimpleNamespace(name='Ollama EPF', api_type='ollama', base_url='https://locallm.mde.epf.fr/ollama', api_key_env='LLM_API_KEY', default_model='gemma4:26b'); print(c.check_model(p, 'gemma4:26b')); print(c.ping_generation(p, 'gemma4:26b'))"
 ```
 
 Attendu : `True`, puis `(True, None, None)`. `check_model` seul ne suffit pas —
 la liste des modèles répond encore normalement avec un compte sans crédit,
-seul l'appel de génération le révèle.
+seul l'appel de génération le révèle. Avec une clé vide, la même commande
+lève `LLMConfigError` : c'est le comportement de l'étape 4.
 
 Ensuite, bout en bout : demander la génération des synthèses d'un sondage avec
 `summaries_generator_daemon.py` lancé. Les lignes passent de `http_status` 0 à
