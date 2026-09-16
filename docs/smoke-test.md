@@ -80,6 +80,38 @@ normalement, seules les synthèses sont indisponibles. Avec le daemon
 erreur de configuration (`http_status` 500, « variable d'environnement
 absente ou vide ») et aucun appel n'est fait au fournisseur.
 
+## 5. Avec une clé LLM
+
+Chaque étudiant récupère sa propre clé sur <https://locallm.mde.epf.fr> en se
+connectant avec son compte EPF, puis la renseigne dans son `.env` :
+
+```
+LLM_API_KEY=<votre clé>
+```
+
+Vérification rapide, sans passer par l'interface :
+
+```bash
+.venv/bin/python -c "
+from types import SimpleNamespace
+from services import llm_client as c
+p = SimpleNamespace(name='Ollama EPF', api_type='ollama',
+                    base_url='https://locallm.mde.epf.fr/ollama',
+                    api_key_env='LLM_API_KEY', default_model='gemma4:26b')
+print(c.check_model(p, 'gemma4:26b'))
+print(c.ping_generation(p, 'gemma4:26b'))
+"
+```
+
+Attendu : `True`, puis `(True, None, None)`. `check_model` seul ne suffit pas —
+la liste des modèles répond encore normalement avec un compte sans crédit,
+seul l'appel de génération le révèle.
+
+Ensuite, bout en bout : demander la génération des synthèses d'un sondage avec
+`summaries_generator_daemon.py` lancé. Les lignes passent de `http_status` 0 à
+200 et la synthèse s'affiche en HTML. Ne jamais committer la clé : `.env` est
+ignoré par Git.
+
 ## Ensuite
 
 Tester manuellement les routes concernées par le changement, sur une base
