@@ -37,6 +37,7 @@ from models import (
 from dotenv import load_dotenv
 
 import hmac
+import secrets
 import uuid
 import requests
 import msal
@@ -105,6 +106,19 @@ REDIRECT_URI = os.environ.get("REDIRECT_URI", "https://localhost/auth/callback")
 # URL où Microsoft redirige après authentification
 SCOPES = ["User.Read"]
 # Droits demandés à l'utilisateur (accès au profil basique)
+# └───────────────────────────────────────────────────────────────────────────┘
+
+# ┌─ Clé de session ──────────────────────────────────────────────────────────┐
+# Clé de signature des cookies de session (vide = non définie). Sans elle, un
+# cookie forgé suffirait pour se connecter en tant que n'importe qui.
+SECRET_KEY = os.environ.get("SECRET_KEY", "").strip() or None
+if SECRET_KEY is None:
+    if AUTH_MODE == "entra":
+        logger.critical("MISSING SECRET_KEY. Required with AUTH_MODE=entra, please check .env")
+        sys.exit(1)
+    # Mode dev : clé aléatoire, les sessions ne survivent pas à un redémarrage
+    SECRET_KEY = secrets.token_urlsafe(32)
+    logger.warning("SECRET_KEY non définie : clé de session aléatoire, les sessions seront perdues au redémarrage")
 # └───────────────────────────────────────────────────────────────────────────┘
 
 # ┌─ Stockage en mémoire (fallback pour développement local) ──────────────────┐
