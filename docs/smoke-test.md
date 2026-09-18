@@ -94,7 +94,7 @@ docker compose down
 Une configuration de démarrage invalide doit sortir en **code 1**, pour qu'un
 superviseur ou une CI voie l'échec.
 
-Le `.env` doit être écarté pour le second cas : `load_dotenv()` y relirait
+Le `.env` doit être écarté pour les deux derniers cas : `load_dotenv()` y relirait
 `AUTH_MODE=dev` et l'application démarrerait normalement, en code 0.
 
 **Windows (PowerShell)**
@@ -110,6 +110,13 @@ Rename-Item .env .env.bak
 'AUTH_MODE','ENTRA_CLIENT_ID','ENTRA_CLIENT_SECRET','ENTRA_TENANT_ID' |
   ForEach-Object { Remove-Item "Env:$_" -ErrorAction SilentlyContinue }
 .venv\Scripts\python.exe -c "import main"; $LASTEXITCODE   # 1
+
+# SECRET_KEY manquante en entra, sans .env
+$env:ENTRA_CLIENT_ID = "x"; $env:ENTRA_CLIENT_SECRET = "x"; $env:ENTRA_TENANT_ID = "x"
+Remove-Item Env:SECRET_KEY -ErrorAction SilentlyContinue
+.venv\Scripts\python.exe -c "import main"; $LASTEXITCODE   # 1
+'ENTRA_CLIENT_ID','ENTRA_CLIENT_SECRET','ENTRA_TENANT_ID' |
+  ForEach-Object { Remove-Item "Env:$_" }
 Rename-Item .env.bak .env
 ```
 
@@ -123,12 +130,17 @@ AUTH_MODE=bogus .venv/bin/python -c "import main"; echo $?   # 1
 mv .env .env.bak
 env -u AUTH_MODE -u ENTRA_CLIENT_ID -u ENTRA_CLIENT_SECRET -u ENTRA_TENANT_ID \
   .venv/bin/python -c "import main"; echo $?   # 1
+
+# SECRET_KEY manquante en entra, sans .env
+env -u AUTH_MODE -u SECRET_KEY ENTRA_CLIENT_ID=x ENTRA_CLIENT_SECRET=x ENTRA_TENANT_ID=x \
+  .venv/bin/python -c "import main"; echo $?   # 1
 mv .env.bak .env
 ```
 
 Attendu : la ligne de log `INVALID AUTH_MODE 'bogus'` pour le premier cas,
-`MISSING ENTRA INFO. Please check .env` pour le second. En témoin,
-`AUTH_MODE=dev` sort en 0.
+`MISSING ENTRA INFO. Please check .env` pour le deuxième,
+`MISSING SECRET_KEY. Required with AUTH_MODE=entra, please check .env` pour le
+troisième. En témoin, `AUTH_MODE=dev` sort en 0, même sans `SECRET_KEY`.
 
 ## 4. Absence de clé LLM
 

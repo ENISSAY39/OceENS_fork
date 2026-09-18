@@ -205,12 +205,14 @@ ENTRA_TENANT_ID=your_tenant_id_here
 REDIRECT_URI=http://localhost:8000/auth/callback
 ALLOWED_DOMAINS=epf.fr,epfedu.fr
 
-# Session
+# Session (obligatoire hors AUTH_MODE=dev)
 SECRET_KEY=your_secure_random_key_here
 
 # Synthèses LLM
 LLM_API_KEY=your_llm_api_key_here
 ```
+
+`SECRET_KEY` signe les cookies de session : quiconque la connaît peut forger une session admin. Elle est **obligatoire hors `AUTH_MODE=dev`** : si elle est absente ou vide, l'application journalise une erreur critique et s'arrête au démarrage (code de sortie 1). Générez-la avec `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
 
 > [!CAUTION]
 > Ne jamais commiter le fichier `.env`. Il est déjà listé dans le `.gitignore`, tout comme les fichiers `*.db` (`database/db_oceens.db`, `cache_llm.db`).
@@ -489,6 +491,7 @@ Pour travailler sur un fork sans application Azure, la **connexion de développe
 |----------|------|
 | `AUTH_MODE` | `entra` (défaut) ou `dev`, sans tenir compte de la casse ni des espaces. Toute autre valeur arrête l'application au démarrage. En `dev`, les variables `ENTRA_*` ne sont pas nécessaires. |
 | `DEV_LOGIN_KEY` | Optionnelle, mode `dev` uniquement. Si elle est définie, chaque connexion doit la fournir (champ `key`), sinon `401`. Si elle ne l'est pas, la connexion est ouverte. Ignorée (avec un avertissement) en `entra`. |
+| `SECRET_KEY` | Facultative en `dev` : si elle manque, une clé aléatoire est tirée à chaque démarrage (avec un avertissement) et les sessions sont perdues au redémarrage. Obligatoire en `entra`. |
 | `ALLOWED_DOMAINS` | S'applique aussi en `dev` (`403` pour un autre domaine) ; vaut `epf.fr,epfedu.fr` par défaut dans ce mode. |
 
 En mode `dev`, le cookie de session n'est plus limité à HTTPS (`http://localhost` fonctionne), `/login` redirige vers `/dev/login`, `/auth/callback` n'existe pas et `/logout` efface la session puis renvoie vers `/`. Un avertissement est journalisé au démarrage. Un bandeau rouge, non refermable, s'affiche en haut de chaque page incluant le header partagé : il rappelle l'adresse connectée, propose « Changer d'utilisateur » (`/dev/login`) et précise « accès ouvert à tous » quand `DEV_LOGIN_KEY` n'est pas définie.
@@ -510,7 +513,7 @@ curl -b cookies.txt -c cookies.txt -L http://localhost:8000/
 ```
 
 > [!WARNING]
-> Le mode `dev` ne vérifie pas `SECRET_KEY`. Avec la valeur par défaut du dépôt, n'importe qui peut forger un cookie de session et contourner `DEV_LOGIN_KEY` : le mode `dev` l'accepte, car il ne sert qu'en local.
+> Le mode `dev` n'exige pas `SECRET_KEY`. Sans elle, la clé est aléatoire et inconnue ; mais si une `SECRET_KEY` connue est définie (partagée, copiée d'un exemple…), quiconque la connaît peut forger un cookie de session et contourner `DEV_LOGIN_KEY` : le mode `dev` l'accepte, car il ne sert qu'en local.
 
 ---
 
@@ -552,7 +555,7 @@ validé (format + domaine autorisé) et les doublons sont refusés.
 
 ## Checklist de déploiement
 
-- [ ] `.env` créé avec les vraies credentials Azure et une `SECRET_KEY` dédiée
+- [ ] `.env` créé avec les vraies credentials Azure et une `SECRET_KEY` dédiée (obligatoire hors `AUTH_MODE=dev`, sinon l'application refuse de démarrer)
 - [ ] `AUTH_MODE` non défini ou `entra`
 - [ ] Certificat SSL valide (Let's Encrypt ou équivalent)
 - [ ] `https_only=True` dans le SessionMiddleware (automatique hors `AUTH_MODE=dev`)
