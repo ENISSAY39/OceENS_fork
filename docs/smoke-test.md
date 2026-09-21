@@ -159,23 +159,42 @@ connectant avec son compte EPF, puis la renseigne dans son `.env` :
 LLM_API_KEY=<votre clé>
 ```
 
-Vérification rapide, sans passer par l'interface. La commande tient sur une
-ligne et fonctionne dans les deux shells — seul le chemin de l'interpréteur
-change (`.venv\Scripts\python.exe` sous Windows) :
+Vérification rapide, sans passer par l'interface. **La clé doit se trouver dans
+l'environnement de cette commande, et pas seulement dans le `.env`** :
+`load_dotenv()` est appelé par l'application, par le daemon et par le module
+d'authentification, mais pas par `services/llm_client.py`, seul module importé
+ici. Sans le préfixe ci-dessous, la commande lève `LLMConfigError` quel que
+soit le contenu du `.env`.
 
+La ligne `python -c` tient sur une ligne et est identique sur les deux
+systèmes ; seuls le chemin de l'interpréteur et la façon de définir la
+variable changent.
+
+**Windows (PowerShell)**
+
+```powershell
+$env:LLM_API_KEY = "<votre clé>"
+.venv\Scripts\python.exe -c "from types import SimpleNamespace; from services import llm_client as c; p = SimpleNamespace(name='Ollama EPF', api_type='ollama', base_url='https://locallm.mde.epf.fr/ollama', api_key_env='LLM_API_KEY', default_model='gemma4:26b'); print(c.check_model(p, 'gemma4:26b')); print(c.ping_generation(p, 'gemma4:26b'))"
+Remove-Item Env:LLM_API_KEY
 ```
-.venv/bin/python -c "from types import SimpleNamespace; from services import llm_client as c; p = SimpleNamespace(name='Ollama EPF', api_type='ollama', base_url='https://locallm.mde.epf.fr/ollama', api_key_env='LLM_API_KEY', default_model='gemma4:26b'); print(c.check_model(p, 'gemma4:26b')); print(c.ping_generation(p, 'gemma4:26b'))"
+
+**macOS / Linux (bash)**
+
+```bash
+LLM_API_KEY=<votre clé> .venv/bin/python -c "from types import SimpleNamespace; from services import llm_client as c; p = SimpleNamespace(name='Ollama EPF', api_type='ollama', base_url='https://locallm.mde.epf.fr/ollama', api_key_env='LLM_API_KEY', default_model='gemma4:26b'); print(c.check_model(p, 'gemma4:26b')); print(c.ping_generation(p, 'gemma4:26b'))"
 ```
 
 Attendu : `True`, puis `(True, None, None)`. `check_model` seul ne suffit pas —
 la liste des modèles répond encore normalement avec un compte sans crédit,
-seul l'appel de génération le révèle. Avec une clé vide, la même commande
-lève `LLMConfigError` : c'est le comportement de l'étape 4.
+seul l'appel de génération le révèle. Avec une valeur vide, ou sans la
+variable, la même commande lève `LLMConfigError` : c'est le comportement de
+l'étape 4.
 
 Ensuite, bout en bout : demander la génération des synthèses d'un sondage avec
-`summaries_generator_daemon.py` lancé. Les lignes passent de `http_status` 0 à
-200 et la synthèse s'affiche en HTML. Ne jamais committer la clé : `.env` est
-ignoré par Git.
+`summaries_generator_daemon.py` lancé. Cette moitié-là n'a pas besoin du
+préfixe : le daemon, lui, lit le `.env`. Les lignes passent de `http_status` 0
+à 200, une à la fois (le daemon est séquentiel), et la synthèse s'affiche en
+HTML. Ne jamais committer la clé : `.env` est ignoré par Git.
 
 ## Ensuite
 
