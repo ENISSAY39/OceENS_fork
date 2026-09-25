@@ -507,6 +507,9 @@ OceENS/
 ├── pyproject.toml                    # Package, dependencies, entry points
 ├── uv.lock                           # Locked dependency versions
 ├── .python-version                   # Python version (3.12)
+├── tach.toml                         # Package-boundary rule, checked by `tach check`
+├── scripts/check_cycles.py           # Rejects import cycles between packages
+├── .github/workflows/                # CI: the package-structure check
 ├── Dockerfile, docker-compose.yaml, .dockerignore
 ├── launch.sh                         # Production launcher, without Docker (screen)
 ├── .env.example                      # Configuration template, copied to .env (not committed)
@@ -523,6 +526,7 @@ OceENS/
 │   │   ├── database.py               #   SQLite engine and the SessionDep dependency
 │   │   ├── security.py               #   Roles, scopes, access control
 │   │   ├── dependencies.py           #   Shared Jinja templates and logger
+│   │   ├── settings_store.py         #   Application settings (USD → EUR rate)
 │   │   └── seed.py                   #   Initial data and program synchronisation
 │   ├── models/                       # SQLModel schema, one file per table
 │   ├── routers/                      # Routes, split by business domain
@@ -611,8 +615,18 @@ student (`POST /api/users`, admin only). The address is validated (format and
 
 ## Before contributing
 
-There is no automated test suite or CI yet. Before proposing a change that
-touches startup, configuration, dependencies or the container, run the
+CI runs one check on every push and pull request: the package structure. No
+private name (one starting with `_`) may be imported from outside its package,
+and no two packages may import each other. The rule is described in
+[`src/oceens/README.md`](src/oceens/README.md); run it locally with:
+
+```bash
+uv run tach check
+uv run python scripts/check_cycles.py
+```
+
+There is no automated test suite yet. Before proposing a change that touches
+startup, configuration, dependencies or the container, run the
 [smoke test](docs/smoke-test.md); then test the routes your change touches by
 hand, on a throwaway SQLite database (never a copy of production), with the
 relevant roles and *sondage* statuses.
