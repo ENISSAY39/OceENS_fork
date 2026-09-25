@@ -1,32 +1,24 @@
 FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /uvx /bin/
 WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY ./requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# Dépendances d'abord, depuis le lockfile seul : cette couche reste en cache
+# tant que uv.lock ne change pas.
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --locked --no-dev --no-install-project
 
-# Fichiers source Python (structure plate, pas de sous-dossier app/)
-COPY main.py ./
-COPY sondage_loader.py survey_loader_from_xlsx.py summaries_generator_daemon.py ./
+# Puis le package `oceens` (code, templates, fichiers statiques, données de seed)
+COPY src ./src
+RUN uv sync --locked --no-dev
 
-# Répertoires applicatifs
-COPY ./core core
-COPY ./models models
-COPY ./routers routers
-COPY ./services services
-COPY ./templates templates
-COPY ./static static
-COPY ./import import
-
-ENV PYTHONUNBUFFERED=1
-
-
-# Le répertoire database/ est créé automatiquement par database.py au démarrage.
-# Monter /app/database comme volume pour persister la base SQLite entre les redémarrages.
+# La base n'est pas dans le package : son dossier est fixé ici et monté comme
+# volume (voir docker-compose.yaml) pour persister entre les redémarrages.
 # Le fichier .env ne doit PAS être copié dans l'image : fournir les secrets via
 # --env-file .env au lancement (docker run) ou via les variables d'environnement.
+ENV PATH="/app/.venv/bin:$PATH" LOCAL_DATABASE_DIR=/app/database
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-
+CMD ["oceens"]
