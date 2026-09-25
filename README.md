@@ -18,7 +18,8 @@ says where that boundary is.
 
 | Component | Technology |
 |-----------|------------|
-| **Framework** | FastAPI (Python 3.12) |
+| **Framework** | FastAPI (Python 3.12, set in `.python-version`) |
+| **Packaging** | [uv](https://docs.astral.sh/uv/): `pyproject.toml`, `uv.lock`, one `oceens` package under `src/` |
 | **Authentication** | Microsoft Entra ID (Azure AD) via OAuth 2.0 / MSAL and Microsoft Graph; a development sign-in for local work |
 | **Database** | SQLite (SQLAlchemy + SQLModel) |
 | **Templating** | Jinja2 (server-side rendering) |
@@ -49,25 +50,21 @@ no LLM key**.
 
 2. **Start the application**, either with Uvicorn or with Docker Compose.
 
-   **With Uvicorn** (Python 3.12). The commands call the virtual environment's
-   interpreter by its path, so there is nothing to activate:
+   **With uv** ([install uv](https://docs.astral.sh/uv/getting-started/installation/)
+   first). `uv sync` creates `.venv` from `uv.lock` with the Python version in
+   `.python-version`, downloading it if needed; `uv run` runs a command in that
+   environment, so there is nothing to activate. The commands are the same on
+   Windows, macOS and Linux:
 
    ```bash
-   # macOS / Linux
-   python3 -m venv .venv
-   .venv/bin/pip install -r requirements.txt
-   .venv/bin/uvicorn main:app --port 8000
+   uv sync
+   uv run uvicorn oceens.main:app --port 8000
    ```
 
-   ```powershell
-   # Windows (PowerShell)
-   py -3.12 -m venv .venv
-   .venv\Scripts\python.exe -m pip install -r requirements.txt
-   .venv\Scripts\uvicorn.exe main:app --port 8000
-   ```
-
-   Start it from the repository root: templates, static files and seed data
-   are found relative to the working directory.
+   `uv run oceens` does the same on every interface (`0.0.0.0:8000`), as in
+   production. Nothing depends on the working directory: templates, static
+   files and seed data are read from the package, and the database stays in
+   `database/` at the repository root.
 
    **With Docker Compose** (needs a running Docker daemon):
 
@@ -136,10 +133,9 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 |----------|---------|
 | `LOCAL_DATABASE_DIR` | Folder holding the SQLite file `db_oceens.db`. Defaults to `database/` at the repository root; a relative path is resolved from the repository root. The folder is created if needed. |
 
-With Docker Compose, the host folder `${LOCAL_DATABASE_DIR:-./database}` is
-mounted at `/app/database`. The same variable is also passed into the
-container, where the application reads it as a container path, so only the
-default (empty) value keeps the database in the mounted folder today.
+With Docker Compose, `LOCAL_DATABASE_DIR` selects the host folder
+(`./database` when empty), mounted at `/app/database`; inside the container the
+application always uses `/app/database`.
 
 ### LLM settings
 
@@ -220,7 +216,7 @@ The database is a single SQLite file, `db_oceens.db`, in the folder set by
 Tables are created at startup if they do not exist.
 
 At every start, the application also synchronises the program list from
-`import/Program_list.csv`, and inserts the default LLM provider, the USD → EUR
+`src/oceens/import/Program_list.csv`, and inserts the default LLM provider, the USD → EUR
 rate and the known model prices when they are missing; values edited in the
 administration are kept.
 
@@ -248,8 +244,8 @@ its data in `/dashboard/teachers/analytics`.
 
 ## LLM summaries
 
-*Synthèses* are produced by a daemon, `summaries_generator_daemon.py`, separate
-from the web application. The two only communicate through the `summaries`
+*Synthèses* are produced by a daemon, `oceens-summaries-daemon`
+(`summaries_generator_daemon.py`), separate from the web application. The two only communicate through the `summaries`
 table, used as a queue:
 
 1. From a closed *sondage*, a manager requests the *synthèses*
@@ -264,7 +260,7 @@ The daemon loops, writes to the database and calls an external service. Run it
 only when needed, either by hand:
 
 ```bash
-.venv/bin/python summaries_generator_daemon.py        # Windows: .venv\Scripts\python.exe
+uv run oceens-summaries-daemon
 ```
 
 or alongside Uvicorn with [`RUN_SUMMARIES_DAEMON`](#llm-settings). In
@@ -503,36 +499,43 @@ usually to `stderr`; redirect it separately, e.g. `2> error.log`, to keep them.
 
 ## Project structure
 
+All the code lives in one package, `oceens`, under `src/`. Paths such as
+`core/auth.py` elsewhere in this README are relative to `src/oceens/`.
+
 ```
 OceENS/
-├── main.py                       # FastAPI factory, middlewares, router assembly
-├── sondage_loader.py             # Loads a complete sondage for export
-├── survey_loader_from_xlsx.py    # Imports sondages from an Excel file
-├── summaries_generator_daemon.py # Summaries daemon (separate process)
-├── launch.sh                     # Production launcher, without Docker (screen)
-├── requirements.txt              # Python dependencies
+├── pyproject.toml                    # Package, dependencies, entry points
+├── uv.lock                           # Locked dependency versions
+├── .python-version                   # Python version (3.12)
 ├── Dockerfile, docker-compose.yaml, .dockerignore
-├── .env.example                  # Configuration template, copied to .env (not committed)
+├── launch.sh                         # Production launcher, without Docker (screen)
+├── .env.example                      # Configuration template, copied to .env (not committed)
 │
-├── core/                         # Low-level access and security
-│   ├── auth.py                   #   Entra ID sign-in and development sign-in
-│   ├── database.py               #   SQLite engine and the SessionDep dependency
-│   ├── security.py               #   Roles, scopes, access control
-│   ├── dependencies.py           #   Shared Jinja templates and logger
-│   └── seed.py                   #   Initial data and program synchronisation
+├── src/oceens/
+│   ├── __main__.py                   # `oceens` entry point: serves the app with Uvicorn
+│   ├── main.py                       # FastAPI factory, middlewares, router assembly
+│   ├── summaries_generator_daemon.py # Summaries daemon; `oceens-summaries-daemon` entry point
+│   ├── sondage_loader.py             # Loads a complete sondage for export
+│   ├── survey_loader_from_xlsx.py    # Imports sondages from an Excel file
+│   │
+│   ├── core/                         # Low-level access and security
+│   │   ├── auth.py                   #   Entra ID sign-in and development sign-in
+│   │   ├── database.py               #   SQLite engine and the SessionDep dependency
+│   │   ├── security.py               #   Roles, scopes, access control
+│   │   ├── dependencies.py           #   Shared Jinja templates and logger
+│   │   └── seed.py                   #   Initial data and program synchronisation
+│   ├── models/                       # SQLModel schema, one file per table
+│   ├── routers/                      # Routes, split by business domain
+│   │   └── llm/                      #   LLM administration: providers, prices, costs
+│   ├── services/                     # Business logic: aggregations, CSV export, LLM client and costs
+│   │
+│   ├── templates/                    # Jinja2 templates: dashboard/, backend/, template_parts/
+│   ├── static/                       # css/, js/, img/
+│   └── import/                       # Seed data: program list, demonstration answers
 │
-├── models/                       # SQLModel schema, one file per table
-├── routers/                      # Routes, split by business domain
-│   └── llm/                      #   LLM administration: providers, prices, costs
-├── services/                     # Business logic: aggregations, CSV export, LLM client and costs
-│
-├── templates/                    # Jinja2 templates: dashboard/, backend/, template_parts/
-├── static/                       # css/, js/, img/
-├── import/                       # Seed data: program list, demonstration answers
-├── database/                     # SQLite database (not committed)
-│
-├── docs/                         # Smoke test, ADRs, agent docs
-└── llm-utils/                    # LLM tools outside the application
+├── database/                         # SQLite database (not committed)
+├── docs/                             # Smoke test, ADRs, agent docs
+└── llm-utils/                        # LLM tools outside the application
 ```
 
 ---
@@ -556,7 +559,9 @@ the analytics pass it, so a click on a teacher's score opens their view.
 
 ### *Sondages* imported from Excel
 
-*Sondages* loaded by `survey_loader_from_xlsx.py` have no `QCU_Attendance`
+`uv run python -m oceens.survey_loader_from_xlsx SYLLABUS_FILE FORMS_FILE
+PROGRAM SEMESTER SCHOOL_YEAR` loads a *sondage* from two Excel files.
+*Sondages* loaded this way have no `QCU_Attendance`
 question: `services/visualisation_data.py` then uses
 `satisfaction_responses_count` as the fallback denominator for the teacher
 score. Teacher names are normalised with `.title()` on import and on
