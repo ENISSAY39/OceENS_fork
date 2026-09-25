@@ -23,7 +23,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
-import uvicorn
 
 from oceens.core.auth import AUTH_MODE, SECRET_KEY, router as auth_router
 from oceens.core.database import create_db_and_tables
@@ -160,14 +159,4 @@ app = create_app()
 # └──────────────────────────────────────────────────────────────────────┘
 
 
-def run():
-    """Point d'entrée `oceens` : sert l'application sur toutes les interfaces."""
-    uvicorn.run(
-        "oceens.main:app",
-        host="0.0.0.0",
-        port=8000,
-    )
-
-
-if __name__ == "__main__":
-    run()
+# Le serveur se lance avec le point d'entrée `oceens` (voir `oceens/__main__.py`).

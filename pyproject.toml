@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.scripts]
-oceens = "oceens.main:run"
+oceens = "oceens.__main__:run"
 oceens-summaries-daemon = "oceens.summaries_generator_daemon:main"
 
 [build-system]

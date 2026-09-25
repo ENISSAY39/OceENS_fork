@@ -512,7 +512,8 @@ OceENS/
 ├── .env.example                      # Configuration template, copied to .env (not committed)
 │
 ├── src/oceens/
-│   ├── main.py                       # FastAPI factory, middlewares, router assembly; `oceens` entry point
+│   ├── __main__.py                   # `oceens` entry point: serves the app with Uvicorn
+│   ├── main.py                       # FastAPI factory, middlewares, router assembly
 │   ├── summaries_generator_daemon.py # Summaries daemon; `oceens-summaries-daemon` entry point
 │   ├── sondage_loader.py             # Loads a complete sondage for export
 │   ├── survey_loader_from_xlsx.py    # Imports sondages from an Excel file
