@@ -229,6 +229,21 @@ default prompt) is inserted **only when the database has no user**. To start
 over from the demonstration data, stop the application and delete
 `db_oceens.db`.
 
+To try each role's screens with the [development sign-in](#development-sign-in),
+the data set has a user holding that role and no other:
+
+| Role | User |
+|------|------|
+| `admin` | `arnaud.jousset@epf.fr` |
+| `program_manager:MDAI5` | `oceens.program-manager@epf.fr` |
+| `facilitator:MDAI5` | `oceens.facilitator@epf.fr` |
+| `campus_manager:Montpellier` | `oceens.campus-manager@epf.fr` |
+| `student` (no role row) | `bob.leponge@epfedu.fr` |
+
+The seeded *sondages* are all open, and the campus-manager dashboard lists only
+closed ones: until a Montpellier *sondage* is closed, the campus manager sees
+its data in `/dashboard/teachers/analytics`.
+
 ---
 
 ## LLM summaries
