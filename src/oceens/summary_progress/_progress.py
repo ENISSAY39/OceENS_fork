@@ -7,7 +7,7 @@ from oceens.models import Summary
 # Durée moyenne d'un job, mesurée le 25/09/2026 sur 10 synthèses réussies.
 # L'estimation est une somme de durées : on multiplie par la moyenne, pas par
 # la médiane.
-SECONDS_PER_JOB = 22
+SECONDS_PER_JOB = 20
 
 
 @dataclass(frozen=True)
