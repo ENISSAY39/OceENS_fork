@@ -14,6 +14,8 @@ The original directory before the move. Every file is dated 25/09/2026:
 
 My answer on issue #107 (`issue107-reponse.md`) points to this README for the details.
 
+On 02/10/2026 the directory was brought over, unchanged, from `course-2026` to `course-2026-fallback-clean-bench`, the branch Lab 2 starts from, and the Design Document v1 was added to it.
+
 ## What is inside
 
 The `.db` and `.log` files are ignored by git (`.gitignore`), so they are **only on my machine**. The other files are on my fork.
@@ -27,6 +29,8 @@ The `.db` and `.log` files are ignored by git (`.gitignore`), so they are **only
 | `measure.py`, `jobs.py`, `jobs2.py`, `jobs3.py` | Fork | The scripts used to queue the jobs and time them. |
 | `issue107-reponse.md` | Fork | My answer for issue #107, adapted to the Instructor's v0 (the Group's assumptions, with my measurements as checks). |
 | `template_v0_issue_body.md` | Fork | The Instructor's v0: the body of issue #107 since he rewrote it on 29/09/2026. This is the template that `issue107-reponse.md` follows. |
+| `design-document-v1.md` | Fork | My Design Document v1 (Lab 2), written on 02/10/2026: the Instructor's v1 with my measurements as checks, including assumption D and what the seam's callers see. It continues `issue107-reponse.md`. |
+| `template_v1_issue_body.md` | Fork | The Instructor's v1: the body of issue #105 as it was on 02/10/2026. This is the template that `design-document-v1.md` follows. |
 | `template_xav.md` | Fork | The Instructor's comment of 29/09/2026. Below its first line it holds my **earlier** issue body (the old blank template, "Assumptions (mine)"), not the new template. |
 | `image.png` | Fork | The screenshot above: the original directory and its file dates. |
 
