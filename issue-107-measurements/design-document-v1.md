@@ -100,7 +100,7 @@ Paths are at the repository root on `course-2026`. After packaging (EPF-MDE/OceE
 - **The estimate: when the server is down, it is too long, not too short.** My 4 jobs at HTTP 400 took 0.1 to 0.2 s each, not 22 s. The queue then drains into errors faster than announced. The estimate stays on the safe side, and the missing summaries show up in `errors`.
 - **No schema change: I agree, with one note on my own data.** In my measurement database I set the 69 jobs I did not generate to `http_status = -1`, a marker of mine. Under "anything else is an error" they would count as 69 errors. That is a property of my throwaway copy, not of the application, and I will say so at the Oral if I show it.
 - **Still outside this seam's interface:** the retry of a 500 or a 400. It would belong behind the same seam, and it changes the number: a retried job costs time, a failed one costs a missing summary.
-- **The Spec and the ticket:** #131 and #132 are the Instructor's. Mine are not written yet; their numbers will replace these two when they are.
+- **The Spec and the ticket:** #131 and #132 are the Instructor's. My Spec is #151. My ticket is not written yet; its number will go here when it is.
 
 <details>
 <summary>Walk-through: how we got here</summary>

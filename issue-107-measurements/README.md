@@ -31,6 +31,7 @@ The `.db` and `.log` files are ignored by git (`.gitignore`), so they are **only
 | `template_v0_issue_body.md` | Fork | The Instructor's v0: the body of issue #107 since he rewrote it on 29/09/2026. This is the template that `issue107-reponse.md` follows. |
 | `design-document-v1.md` | Fork | My Design Document v1 (Lab 2), written on 02/10/2026: the Instructor's v1 with my measurements as checks, including assumption D and what the seam's callers see. It continues `issue107-reponse.md`. |
 | `template_v1_issue_body.md` | Fork | The Instructor's v1: the body of issue #105 as it was on 02/10/2026. This is the template that `design-document-v1.md` follows. |
+| `spec-summary-progress.md` | Fork | My Spec (Lab 2), written on 02/10/2026 from section 4 of `design-document-v1.md`: the body of issue #151 on `EPF-MDE/OceENS`. Its acceptance numbers are my measured ones (85 jobs, 22 s). |
 | `template_xav.md` | Fork | The Instructor's comment of 29/09/2026. Below its first line it holds my **earlier** issue body (the old blank template, "Assumptions (mine)"), not the new template. |
 | `image.png` | Fork | The screenshot above: the original directory and its file dates. |
 
