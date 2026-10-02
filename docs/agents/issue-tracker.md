@@ -11,7 +11,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Apply / remove labels**: `gh issue edit -R EPF-MDE/OceENS <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close -R EPF-MDE/OceENS <number> --comment "..."`
 
-This clone has two remotes (`origin` = `EPF-MDE/OceENS`, `fork` = `xavxyz/OceENS-experiment`). Always target `EPF-MDE/OceENS` explicitly with `-R EPF-MDE/OceENS`; never create issues on the fork.
+Clones of this repo usually carry more than one remote (`EPF-MDE/OceENS` plus a personal fork, under whatever remote names). Always target `EPF-MDE/OceENS` explicitly with `-R EPF-MDE/OceENS`; never create issues on a fork.
 
 ## Pull requests as a triage surface
 
