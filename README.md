@@ -717,7 +717,8 @@ duplicates are refused.
 ## How the fork is deployed
 
 `.github/workflows/architecture.yml` deploys the fork's default branch to **staging**, an
-Azure App Service app. Nothing is deployed by hand.
+Azure App Service app. `.github/workflows/promote.yml`, the [Promotion](#promotion-to-production),
+then deploys staging's image to **production**, a second app.
 
 - **When.** On a push to the default branch, once both checks of that run, `architecture`
   and `test`, have passed. A pull request, a push to another branch or a red run deploys
@@ -734,8 +735,8 @@ The image starts one process, `oceens`. `launch.sh` started two, the website and
 `oceens-summaries`, so the deploy sets `RUN_SUMMARIES_DAEMON=1` and the website starts the
 summaries daemon itself.
 
-Staging's settings live in the GitHub Environment `staging`, never in a committed file,
-and none takes its value from `.env.example`:
+Each app's settings live in the GitHub Environment of its name, `staging` or `production`,
+never in a committed file, and none takes its value from `.env.example`:
 
 | In the Environment | Kind | Used for |
 |--------------------|------|----------|
@@ -745,13 +746,32 @@ and none takes its value from `.env.example`:
 | `DEV_LOGIN_KEY` | secret | Key asked by the dev sign-in |
 | `MISTRAL_API_KEY` | secret | Key of the default LLM provider |
 
-The job stops before building if one of them is missing. It also writes `AUTH_MODE=dev`:
-staging holds generated data and no real users, so it signs in through the
-[dev sign-in](#dev-sign-in), guarded by its own `DEV_LOGIN_KEY`. That is the one exception
+A job stops before it builds or deploys if one of them is missing. Every deploy also writes
+`AUTH_MODE=dev`: both apps hold generated data and no real users, so they sign in through the
+[dev sign-in](#dev-sign-in), each guarded by its own `DEV_LOGIN_KEY`. That is the one exception
 to the `AUTH_MODE` line of the [deployment checklist](#deployment-checklist). The default
 LLM provider is seeded under its usual name, "Ollama EPF", but pointing at Mistral
 (`DEFAULT_PROVIDER_API_TYPE=openai`, `DEFAULT_PROVIDER_BASE_URL=https://api.mistral.ai/v1`,
 `DEFAULT_PROVIDER_MODEL=ministral-14b-latest`, `DEFAULT_PROVIDER_KEY_ENV=MISTRAL_API_KEY`).
+
+### Promotion to production
+
+Production is deployed only by the `promote` workflow, which is started by hand
+(`gh workflow run promote.yml`) and builds nothing.
+
+- **Which image.** `find staging's last green deploy` reads the `architecture` workflow's
+  push runs on the default branch, newest first, and takes the commit of the first run
+  whose `deploy to staging` job passed. It logs every run it skips, and the run and commit
+  it takes.
+- **Why the runs, not the app.** A deploy sets the app's image before it waits for an
+  answer, so after a failed deploy staging is still set to the image that never answered.
+  Reading the runs skips that commit and promotes the one before it.
+- **How.** `promote to production` deploys that image tag through
+  `.github/actions/deploy-to-app-service`, the steps `deploy to staging` runs, with the
+  `production` Environment's app and secrets.
+
+If no push run has a `deploy to staging` that passed, the Promotion fails and production
+keeps its image.
 
 ### Known limits
 

@@ -96,78 +96,12 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      # Written at every deploy, so the GitHub Environment stays the one place a
-      # setting is changed. --output none: the command would otherwise print
-      # every setting back, secrets included.
-      #
-      # - WEBSITES_PORT: uvicorn listens on 8000.
-      # - WEBSITES_ENABLE_APP_SERVICE_STORAGE=false: the SQLite file stays on the
-      #   container's own disk, and is seeded again at every start.
-      # - RUN_SUMMARIES_DAEMON=1: the container is the only process, so it starts
-      #   the summaries daemon itself, as launch.sh did beside the website.
-      # - DEFAULT_PROVIDER_*: the seeded provider row keeps its name and points
-      #   at Mistral; KEY_ENV is the name of the variable, not the key.
-      - name: Write staging's settings to its app
-        env:
-          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-          APP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          DEV_LOGIN_KEY: ${{ secrets.DEV_LOGIN_KEY }}
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-        run: |
-          az webapp config appsettings set \
-            --resource-group "$RESOURCE_GROUP" --name "$APP_NAME" --output none \
-            --settings \
-              WEBSITES_PORT=8000 \
-              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
-              AUTH_MODE=dev \
-              RUN_SUMMARIES_DAEMON=1 \
-              DEFAULT_PROVIDER_API_TYPE=openai \
-              DEFAULT_PROVIDER_BASE_URL=https://api.mistral.ai/v1 \
-              DEFAULT_PROVIDER_MODEL=ministral-14b-latest \
-              DEFAULT_PROVIDER_KEY_ENV=MISTRAL_API_KEY \
-              "SECRET_KEY=$SECRET_KEY" \
-              "DEV_LOGIN_KEY=$DEV_LOGIN_KEY" \
-              "MISTRAL_API_KEY=$MISTRAL_API_KEY"
-
-      # The image is public on GHCR, so the app pulls it without credentials.
-      - name: Run the image on staging
-        env:
-          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-          APP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
-          IMAGE: ${{ steps.image.outputs.image }}
-        run: |
-          az webapp config container set \
-            --resource-group "$RESOURCE_GROUP" --name "$APP_NAME" --output none \
-            --container-image-name "$IMAGE"
-          running=$(az webapp config show --resource-group "$RESOURCE_GROUP" --name "$APP_NAME" --query linuxFxVersion --output tsv)
-          if [ "$running" != "DOCKER|$IMAGE" ]; then
-            echo "$APP_NAME is set to $running, not $IMAGE" >&2
-            exit 1
-          fi
-          echo "$APP_NAME now runs $IMAGE"
-
-      # /dev/login answers 200 without a session once the app has started and
-      # seeded. The limit is the one upstream measured on its own plan
-      # (EPF-MDE/OceENS#169), not yet measured on this one.
-      - name: Wait until the app answers
-        env:
-          APP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
-        run: |
-          url="https://$APP_NAME.azurewebsites.net/dev/login"
-          limit=700
-          start=$(date +%s)
-          while true; do
-            status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$url" || true)
-            elapsed=$(( $(date +%s) - start ))
-            if [ "$status" = 200 ]; then
-              echo "$url answers 200, ${elapsed} s after the image was set"
-              exit 0
-            fi
-            echo "${elapsed} s: $url answered ${status:-nothing}, waiting for 200"
-            if [ "$elapsed" -ge "$limit" ]; then
-              echo "$url did not answer 200 within $limit s" >&2
-              exit 1
-            fi
-            sleep 15
-          done
+      - name: Deploy the image to staging
+        uses: ./.github/actions/deploy-to-app-service
+        with:
+          image: ${{ steps.image.outputs.image }}
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          secret-key: ${{ secrets.SECRET_KEY }}
+          dev-login-key: ${{ secrets.DEV_LOGIN_KEY }}
+          mistral-api-key: ${{ secrets.MISTRAL_API_KEY }}
