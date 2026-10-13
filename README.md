@@ -711,6 +711,56 @@ duplicates are refused.
 
 ---
 
+## How the fork is deployed
+
+`.github/workflows/architecture.yml` deploys the fork's default branch to **staging**, an
+Azure App Service app. Nothing is deployed by hand.
+
+- **When.** On a push to the default branch, once both checks of that run, `architecture`
+  and `test`, have passed. A pull request, a push to another branch or a red run deploys
+  nothing.
+- **What.** The `deploy to staging` job builds one image from the pushed commit, tags it
+  with that commit and pushes it to GHCR (`ghcr.io/enissay39/oceens_fork:<commit>`). A
+  commit whose image already exists is not built again: re-running the job deploys the
+  same image. The package must be public, since the app pulls it without credentials.
+- **How.** The job logs in to Azure through OpenID Connect, writes staging's settings to
+  the app, sets the app to the new image, then requests `/dev/login` until it answers
+  `200`. If it has not after 700 s, the job fails.
+
+The image starts one process, `oceens`. `launch.sh` started two, the website and
+`oceens-summaries`, so the deploy sets `RUN_SUMMARIES_DAEMON=1` and the website starts the
+summaries daemon itself.
+
+Staging's settings live in the GitHub Environment `staging`, never in a committed file,
+and none takes its value from `.env.example`:
+
+| In the Environment | Kind | Used for |
+|--------------------|------|----------|
+| `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | variables | The Azure login |
+| `AZURE_RESOURCE_GROUP`, `AZURE_WEBAPP_NAME` | variables | The app to deploy to |
+| `SECRET_KEY` | secret | Signs the session cookies |
+| `DEV_LOGIN_KEY` | secret | Key asked by the dev sign-in |
+| `MISTRAL_API_KEY` | secret | Key of the default LLM provider |
+
+The job stops before building if one of them is missing. It also writes `AUTH_MODE=dev`:
+staging holds generated data and no real users, so it signs in through the
+[dev sign-in](#dev-sign-in), guarded by its own `DEV_LOGIN_KEY`. That is the one exception
+to the `AUTH_MODE` line of the [deployment checklist](#deployment-checklist). The default
+LLM provider is seeded under its usual name, "Ollama EPF", but pointing at Mistral
+(`DEFAULT_PROVIDER_API_TYPE=openai`, `DEFAULT_PROVIDER_BASE_URL=https://api.mistral.ai/v1`,
+`DEFAULT_PROVIDER_MODEL=ministral-14b-latest`, `DEFAULT_PROVIDER_KEY_ENV=MISTRAL_API_KEY`).
+
+### Known limits
+
+- **The data is reset at every deploy and every restart.** The SQLite file lives on the
+  container's own disk, so each start creates and seeds the database again
+  ([What the first start does](#what-the-first-start-does)).
+- **The wait proves that an app answers, not which image answers.** App Service keeps the
+  previous container serving until the new one has started, so a `200` can come from the
+  previous image.
+
+---
+
 ## Validating a change
 
 The automated tests are still few (`uv run pytest`) and there is no CI, so behaviour is
