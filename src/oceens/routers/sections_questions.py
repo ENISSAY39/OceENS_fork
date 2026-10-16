@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 from sqlmodel import delete, func, select
+from oceens.core import production_signals
 from oceens.core.auth import get_current_user
 from oceens.core.database import SessionDep
 from oceens.models import Answer, Question, Role, Section, Template, User
@@ -59,8 +60,9 @@ def create_section(
         session.add(sec)
         session.commit()
         session.refresh(sec)
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la création."}, status_code=500)
 
     return JSONResponse({"ok": True, "section_id": sec.section_id})
@@ -105,8 +107,9 @@ def update_section(
     try:
         session.add(sec)
         session.commit()
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la mise à jour."}, status_code=500)
 
     return JSONResponse({"ok": True})
@@ -153,8 +156,9 @@ def delete_section(request: Request, section_id: int, session: SessionDep):
     try:
         session.delete(sec)
         session.commit()
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la suppression."}, status_code=500)
 
     return JSONResponse({"ok": True})
@@ -207,8 +211,9 @@ def create_question(
         session.add(q)
         session.commit()
         session.refresh(q)
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la création."}, status_code=500)
 
     return JSONResponse({"ok": True, "question_id": q.question_id})
@@ -268,8 +273,9 @@ def update_question(
     try:
         session.add(q)
         session.commit()
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la mise à jour."}, status_code=500)
 
     return JSONResponse({"ok": True})
@@ -313,8 +319,9 @@ def delete_question(request: Request, question_id: int, session: SessionDep):
     try:
         session.delete(q)
         session.commit()
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la suppression."}, status_code=500)
 
     return JSONResponse({"ok": True})

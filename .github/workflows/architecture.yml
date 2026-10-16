@@ -57,10 +57,11 @@ jobs:
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           DEV_LOGIN_KEY: ${{ secrets.DEV_LOGIN_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
         run: |
           missing=0
           for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_RESOURCE_GROUP \
-            AZURE_WEBAPP_NAME SECRET_KEY DEV_LOGIN_KEY MISTRAL_API_KEY; do
+            AZURE_WEBAPP_NAME SECRET_KEY DEV_LOGIN_KEY MISTRAL_API_KEY POSTHOG_PROJECT_TOKEN; do
             if [ -z "${!name}" ]; then
               echo "$name is not set in the staging Environment" >&2
               missing=1
@@ -105,3 +106,5 @@ jobs:
           secret-key: ${{ secrets.SECRET_KEY }}
           dev-login-key: ${{ secrets.DEV_LOGIN_KEY }}
           mistral-api-key: ${{ secrets.MISTRAL_API_KEY }}
+          posthog-project-token: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
+          posthog-environment: staging
