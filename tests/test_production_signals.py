@@ -12,10 +12,14 @@ import logging
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.responses import PlainTextResponse
 from fastapi.testclient import TestClient
+from requests.exceptions import ConnectionError as RequestsConnectionError
 
+from oceens import summaries_generator_daemon as daemon
 from oceens.core import auth, production_signals
 from oceens.core.database import create_db_and_tables
 from oceens.main import create_app
@@ -162,6 +166,53 @@ def test_a_caught_exception_is_sent_with_the_users_email_and_the_same_answer(
     assert (on.status_code, on.text) == (off.status_code, off.text) == (200, "réponse de repli")
     [sent] = exceptions_sent()
     assert sent["distinct_id"] == EMAIL
+
+
+def summary_whose_model_check_fails(monkeypatch):
+    """Traite une synthèse dont la vérification du modèle lève, comme le daemon.
+
+    Retourne ce que le daemon a écrit sur la ligne : (statut, metadata_text).
+    """
+
+    def check_model_fails(provider, model, session):
+        raise RequestsConnectionError("fournisseur injoignable")
+
+    finished = []
+    monkeypatch.setattr(daemon, "check_model", check_model_fails)
+    monkeypatch.setattr(
+        daemon,
+        "get_provider",
+        lambda session, prompt: SimpleNamespace(provider_id=1, name="P", default_model="m"),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "finish_summary",
+        lambda session, row, status, metadata_text=None, **kw: finished.append(
+            (status, metadata_text)
+        ),
+    )
+    session = SimpleNamespace(get=lambda model, key: SimpleNamespace(provider_id=None, model="m"))
+    row = SimpleNamespace(summary_id=7, prompt_id=1, survey_id=42)
+
+    with production_signals.context(identity="oceens-summaries"):
+        with production_signals.context(survey_id=row.survey_id):
+            daemon.process_summary(session, row, None, None, {})
+
+    return finished
+
+
+def test_a_caught_model_check_failure_is_sent_as_the_daemon_with_its_survey(
+    monkeypatch, posthog_host
+):
+    off = summary_whose_model_check_fails(monkeypatch)
+    start_signals(monkeypatch, posthog_host)
+    on = summary_whose_model_check_fails(monkeypatch)
+
+    assert on == off == [(daemon.STATUS_CONFIG_ERROR, "fournisseur injoignable")]
+    [sent] = exceptions_sent()
+    assert sent["distinct_id"] == "oceens-summaries"
+    assert sent["properties"]["survey_id"] == 42
+    assert sent["properties"]["$exception_list"][0]["type"] == "ConnectionError"
 
 
 def test_the_log_handler_goes_on_the_root_and_on_loggers_that_do_not_propagate(

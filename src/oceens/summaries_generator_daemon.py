@@ -201,6 +201,9 @@ def process_summary(session, summary_row, http_session, md, checked_models):
             logger.exception(
                 "Vérification du modèle %s impossible chez %s", model, provider.name
             )
+            # Rattrapée, elle ne sort jamais du contexte : envoyée ici, avec
+            # l'identité du daemon et le sondage, avant d'écrire l'échec.
+            production_signals.report_caught_exception(error)
             finish_summary(
                 session, summary_row, STATUS_CONFIG_ERROR, metadata_text=str(error)
             )
