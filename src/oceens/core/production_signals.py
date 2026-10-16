@@ -32,9 +32,11 @@ from opentelemetry.sdk.resources import Resource
 # Les trois, ou aucun.
 SETTINGS = ("POSTHOG_PROJECT_TOKEN", "POSTHOG_HOST", "POSTHOG_ENVIRONMENT")
 
-# Posés par `start()`, remis à None par `stop()`. Un par processus.
+# Posés par `start()`, remis à zéro par `stop()`. Un par processus.
 _client = None
 _log_provider = None
+_log_handler = None
+_loggers_with_handler = []
 
 
 def read_settings():
@@ -61,7 +63,7 @@ def start(service_name, logger_names=()):
     serveur web, `uvicorn`) : sur aucun autre, pour n'envoyer aucune ligne deux
     fois. Retourne le client PostHog, ou None quand les réglages sont absents.
     """
-    global _client, _log_provider
+    global _client, _log_provider, _log_handler
 
     settings = read_settings()
     if settings is None:
@@ -94,29 +96,35 @@ def start(service_name, logger_names=()):
             )
         )
     )
-    handler = LoggingHandler(logger_provider=_log_provider)
+    _log_handler = LoggingHandler(logger_provider=_log_provider)
 
     root = logging.getLogger()
-    root.addHandler(handler)
     root.setLevel(logging.INFO)
+    _loggers_with_handler.append(root)
     for name in logger_names:
         named = logging.getLogger(name)
         if not named.propagate:
-            named.addHandler(handler)
+            _loggers_with_handler.append(named)
+    for target in _loggers_with_handler:
+        target.addHandler(_log_handler)
 
     return _client
 
 
 def stop():
     """Envoie ce qui reste en file, puis arrête le client et les logs."""
-    global _client, _log_provider
+    global _client, _log_provider, _log_handler
 
+    for target in _loggers_with_handler:
+        target.removeHandler(_log_handler)
+    _loggers_with_handler.clear()
     if _client is not None:
         _client.shutdown()
     if _log_provider is not None:
         _log_provider.shutdown()
     _client = None
     _log_provider = None
+    _log_handler = None
 
 
 def client():
