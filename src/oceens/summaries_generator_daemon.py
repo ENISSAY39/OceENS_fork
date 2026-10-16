@@ -350,13 +350,14 @@ def main():
                         process_summary(
                             session, summary_row, http_session, md, checked_models
                         )
-                    except Exception:
+                    except Exception as error:
                         # Filet de sécurité : une exception inattendue ne doit ni
                         # arrêter le daemon, ni laisser la ligne bloquée à 0.
                         logger.exception(
                             "Erreur inattendue sur la synthèse %s",
                             summary_row.summary_id,
                         )
+                        production_signals.report_caught_exception(error)
                         session.rollback()
                         finish_summary(
                             session,
