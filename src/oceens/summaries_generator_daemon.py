@@ -258,12 +258,14 @@ def process_summary(session, summary_row, http_session, md, checked_models):
         )
     except LLMConfigError as error:
         logger.error("Fournisseur %s mal configuré : %s", provider.name, error)
+        production_signals.report_caught_exception(error)
         finish_summary(
             session, summary_row, STATUS_CONFIG_ERROR, metadata_text=str(error)
         )
         return
     except RequestException as error:
         logger.warning("Appel au fournisseur %s en échec : %s", provider.name, error)
+        production_signals.report_caught_exception(error)
         finish_summary(
             session, summary_row, STATUS_TIMEOUT, metadata_text=str(error)
         )

@@ -22,6 +22,7 @@ from requests.exceptions import ConnectionError as RequestsConnectionError
 from oceens import summaries_generator_daemon as daemon
 from oceens.core import auth, production_signals
 from oceens.core.database import create_db_and_tables
+from oceens.core.settings_store import DEFAULT_USD_TO_EUR, get_usd_to_eur
 from oceens.main import create_app
 
 EMAIL = "oceens.facilitator@epf.fr"
@@ -168,17 +169,22 @@ def test_a_caught_exception_is_sent_with_the_users_email_and_the_same_answer(
     assert sent["distinct_id"] == EMAIL
 
 
-def summary_whose_model_check_fails(monkeypatch):
-    """Traite une synthèse dont la vérification du modèle lève, comme le daemon.
+def raise_(error):
+    def fails(*args, **kwargs):
+        raise error
+
+    return fails
+
+
+def summary_that_fails(monkeypatch, failing_step, error):
+    """Traite une synthèse dont `failing_step` lève `error`, comme le daemon.
 
     Retourne ce que le daemon a écrit sur la ligne : (statut, metadata_text).
     """
-
-    def check_model_fails(provider, model, session):
-        raise RequestsConnectionError("fournisseur injoignable")
-
     finished = []
-    monkeypatch.setattr(daemon, "check_model", check_model_fails)
+    monkeypatch.setattr(daemon, "check_model", lambda provider, model, session: True)
+    monkeypatch.setattr(daemon, "load_verbatims", lambda session, row: ["verbatim"])
+    monkeypatch.setattr(daemon, failing_step, raise_(error))
     monkeypatch.setattr(
         daemon,
         "get_provider",
@@ -191,7 +197,11 @@ def summary_whose_model_check_fails(monkeypatch):
             (status, metadata_text)
         ),
     )
-    session = SimpleNamespace(get=lambda model, key: SimpleNamespace(provider_id=None, model="m"))
+    session = SimpleNamespace(
+        get=lambda model, key: SimpleNamespace(
+            provider_id=None, model="m", prompt_text="{ANSWERS}"
+        )
+    )
     row = SimpleNamespace(summary_id=7, prompt_id=1, survey_id=42)
 
     with production_signals.context(identity="oceens-summaries"):
@@ -201,18 +211,38 @@ def summary_whose_model_check_fails(monkeypatch):
     return finished
 
 
-def test_a_caught_model_check_failure_is_sent_as_the_daemon_with_its_survey(
-    monkeypatch, posthog_host
+@pytest.mark.parametrize(
+    "failing_step, error, status",
+    [
+        ("check_model", RequestsConnectionError("injoignable"), daemon.STATUS_CONFIG_ERROR),
+        ("ask_model", daemon.LLMConfigError("mal configuré"), daemon.STATUS_CONFIG_ERROR),
+        ("ask_model", RequestsConnectionError("injoignable"), daemon.STATUS_TIMEOUT),
+    ],
+)
+def test_a_caught_provider_failure_is_sent_as_the_daemon_with_its_survey(
+    monkeypatch, posthog_host, failing_step, error, status
 ):
-    off = summary_whose_model_check_fails(monkeypatch)
+    off = summary_that_fails(monkeypatch, failing_step, error)
     start_signals(monkeypatch, posthog_host)
-    on = summary_whose_model_check_fails(monkeypatch)
+    on = summary_that_fails(monkeypatch, failing_step, error)
 
-    assert on == off == [(daemon.STATUS_CONFIG_ERROR, "fournisseur injoignable")]
+    assert on == off == [(status, str(error))]
     [sent] = exceptions_sent()
     assert sent["distinct_id"] == "oceens-summaries"
     assert sent["properties"]["survey_id"] == 42
-    assert sent["properties"]["$exception_list"][0]["type"] == "ConnectionError"
+    assert sent["properties"]["$exception_list"][0]["type"] == type(error).__name__
+
+
+def test_an_unreadable_rate_is_sent_and_still_falls_back(monkeypatch, posthog_host):
+    session = SimpleNamespace(get=lambda model, key: SimpleNamespace(value="abc"))
+
+    off = get_usd_to_eur(session)
+    start_signals(monkeypatch, posthog_host)
+    on = get_usd_to_eur(session)
+
+    assert on == off == DEFAULT_USD_TO_EUR
+    [sent] = exceptions_sent()
+    assert sent["properties"]["$exception_list"][0]["type"] == "ValueError"
 
 
 def test_the_log_handler_goes_on_the_root_and_on_loggers_that_do_not_propagate(
