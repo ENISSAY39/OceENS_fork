@@ -8,6 +8,7 @@ from oceens.core.auth import get_current_user
 from oceens.core.database import SessionDep
 from oceens.models import Option, Question, Role, Section, Survey, Template, User
 from oceens.core.dependencies import templates
+from oceens.core import production_signals
 
 api_router = APIRouter(tags=["API"], prefix="/api")
 backend_router = APIRouter(tags=["Backend"], prefix="/backend")
@@ -114,8 +115,9 @@ def create_template(
         session.add(tpl)
         session.commit()
         session.refresh(tpl)
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la création."}, status_code=500)
 
     return JSONResponse({"ok": True, "template_id": tpl.template_id})
@@ -154,8 +156,9 @@ def update_template(
     try:
         session.add(tpl)
         session.commit()
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la mise à jour."}, status_code=500)
 
     return JSONResponse({"ok": True})
@@ -206,8 +209,9 @@ def delete_template(request: Request, template_id: int, session: SessionDep):
             session.delete(sec)
         session.delete(tpl)
         session.commit()
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la suppression."}, status_code=500)
 
     return JSONResponse({"ok": True})
@@ -242,8 +246,9 @@ def toggle_template_active(request: Request, template_id: int, session: SessionD
     try:
         session.add(tpl)
         session.commit()
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la mise à jour."}, status_code=500)
 
     return JSONResponse({"ok": True, "active": tpl.active})
@@ -331,8 +336,9 @@ def duplicate_template(request: Request, template_id: int, session: SessionDep):
                     ))
 
         session.commit()
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la duplication."}, status_code=500)
 
     return JSONResponse({"ok": True, "template_id": new_tpl.template_id})
