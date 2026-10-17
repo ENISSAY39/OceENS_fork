@@ -27,7 +27,8 @@ from sqlmodel import Session, select
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
-from oceens.core.auth import AUTH_MODE, SECRET_KEY, router as auth_router
+from oceens.core import production_signals
+from oceens.core.auth import AUTH_MODE, SECRET_KEY, get_current_user, router as auth_router
 from oceens.core.database import create_db_and_tables, engine
 from oceens.core.dependencies import logger
 from oceens.core.seed import DEFAULT_PROVIDER_NAME, seed_all_if_necessary
@@ -120,10 +121,16 @@ def _warn_about_default_provider():
 async def lifespan(app: FastAPI):
     """Cycle de vie de l'application : setup au démarrage, teardown à l'arrêt.
 
-    Avant le `yield` : création des tables, seed initial, et lancement optionnel
-    du daemon de synthèses en parallèle (si RUN_SUMMARIES_DAEMON est activé).
-    Après le `yield` (à l'arrêt) : arrêt du daemon puis journalisation.
+    Avant le `yield` : signaux de production (si POSTHOG_* sont réglés),
+    création des tables, seed initial, et lancement optionnel du daemon de
+    synthèses en parallèle (si RUN_SUMMARIES_DAEMON est activé).
+    Après le `yield` (à l'arrêt) : arrêt du daemon, journalisation, puis
+    envoi des derniers signaux.
     """
+    # Le handler des logs va sur la racine et sur `uvicorn`, qui ne propage
+    # pas : `uvicorn.error` y propage déjà.
+    production_signals.start("oceens", logger_names=("uvicorn", "uvicorn.error"))
+
     logger.info("Initialisation de la base de données...")
     create_db_and_tables()
     seed_all_if_necessary()
@@ -145,6 +152,8 @@ async def lifespan(app: FastAPI):
 
     logger.info("Fermeture de la connexion...")
 
+    production_signals.stop()
+
 
 def create_app():
     """
@@ -155,6 +164,19 @@ def create_app():
         description="Système de gestion et de connexion pour étudiants, professeurs et admins",
         lifespan=lifespan,
     )
+
+    # Signaux de production : chaque requête dans son contexte PostHog, au nom
+    # de l'utilisateur connecté. Déclaré avant SessionMiddleware, donc exécuté
+    # après lui : la session est déjà chargée. Une exception qui sort de la
+    # requête est envoyée, puis relevée : la réponse reste la même.
+    @app.middleware("http")
+    async def production_signals_context(request: Request, call_next):
+        if production_signals.client() is None:
+            return await call_next(request)
+
+        user = get_current_user(request)
+        with production_signals.context(identity=user and user.get("email")):
+            return await call_next(request)
 
     # SessionMiddleware (authentification)
     app.add_middleware(

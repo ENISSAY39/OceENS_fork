@@ -27,6 +27,12 @@ inputs:
   mistral-api-key:
     description: The environment's own MISTRAL_API_KEY.
     required: true
+  posthog-project-token:
+    description: The token of the PostHog project the environment reports to.
+    required: true
+  posthog-environment:
+    description: What each error and log line is tagged with, staging or production.
+    required: true
 
 runs:
   using: composite
@@ -42,6 +48,8 @@ runs:
     #   the summaries daemon itself, as launch.sh did beside the website.
     # - DEFAULT_PROVIDER_*: the seeded provider row keeps its name and points
     #   at Mistral; KEY_ENV is the name of the variable, not the key.
+    # - POSTHOG_*: production signals, to PostHog's EU region, tagged with the
+    #   environment's name. All three or none, or the app refuses to start.
     - name: Write this environment's settings to its app
       shell: bash
       env:
@@ -50,6 +58,8 @@ runs:
         SECRET_KEY: ${{ inputs.secret-key }}
         DEV_LOGIN_KEY: ${{ inputs.dev-login-key }}
         MISTRAL_API_KEY: ${{ inputs.mistral-api-key }}
+        POSTHOG_PROJECT_TOKEN: ${{ inputs.posthog-project-token }}
+        POSTHOG_ENVIRONMENT: ${{ inputs.posthog-environment }}
       run: |
         az webapp config appsettings set \
           --resource-group "$RESOURCE_GROUP" --name "$APP_NAME" --output none \
@@ -62,9 +72,12 @@ runs:
             DEFAULT_PROVIDER_BASE_URL=https://api.mistral.ai/v1 \
             DEFAULT_PROVIDER_MODEL=ministral-14b-latest \
             DEFAULT_PROVIDER_KEY_ENV=MISTRAL_API_KEY \
+            POSTHOG_HOST=https://eu.i.posthog.com \
+            "POSTHOG_ENVIRONMENT=$POSTHOG_ENVIRONMENT" \
             "SECRET_KEY=$SECRET_KEY" \
             "DEV_LOGIN_KEY=$DEV_LOGIN_KEY" \
-            "MISTRAL_API_KEY=$MISTRAL_API_KEY"
+            "MISTRAL_API_KEY=$MISTRAL_API_KEY" \
+            "POSTHOG_PROJECT_TOKEN=$POSTHOG_PROJECT_TOKEN"
 
     # The image is public on GHCR, so the app pulls it without credentials.
     - name: Run the image

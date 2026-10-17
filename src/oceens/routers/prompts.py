@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlmodel import delete, func, select
+from oceens.core import production_signals
 from oceens.core.auth import get_current_user
 from oceens.core.database import SessionDep
 from oceens.models import LLMProvider, Prompt, Role, Summary, Survey, User
@@ -205,6 +206,7 @@ def create_prompt(
         session.commit()
     except Exception as e:
         session.rollback()
+        production_signals.report_caught_exception(e)
         return RedirectResponse(
             url=f"/backend/prompts/new?error=Erreur+lors+de+la+création.",
             status_code=303,
@@ -265,6 +267,7 @@ def update_prompt(
         session.commit()
     except Exception as e:
         session.rollback()
+        production_signals.report_caught_exception(e)
         return RedirectResponse(
             url=f"/backend/prompts/{prompt_id}/edit?error=Erreur+lors+de+la+mise+à+jour.",
             status_code=303,
@@ -306,8 +309,9 @@ def delete_prompt(request: Request, prompt_id: int, session: SessionDep):
     try:
         session.delete(prompt)
         session.commit()
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse({"error": "Erreur lors de la suppression."}, status_code=500)
 
     return JSONResponse({"ok": True})

@@ -18,6 +18,7 @@ fichier ne connaît ni URL, ni format de payload, ni fournisseur particulier.
 service externe.
 """
 
+import atexit
 import json
 import logging
 import signal
@@ -29,6 +30,7 @@ from markdown_it import MarkdownIt
 from requests.exceptions import RequestException
 from sqlmodel import Session, select
 
+from oceens.core import production_signals
 from oceens.core.database import engine
 from oceens.models import Answer, LLMProvider, Prompt, Submission, Summary
 from oceens.services.llm_client import (
@@ -62,12 +64,18 @@ STATUS_CONFIG_ERROR = 500
 
 
 def signal_handler(signal_number, frame):
-    """Arrête proprement le daemon sur Ctrl+C (SIGINT)."""
+    """Arrête proprement le daemon sur Ctrl+C (SIGINT) ou SIGTERM.
+
+    SIGTERM est ce qu'envoie le serveur web à son arrêt : sans ce handler, le
+    processus meurt sans passer par `atexit`, et les derniers signaux de
+    production en file sont perdus.
+    """
     logger.info("Arrêt du daemon de synthèses.")
     sys.exit(0)
 
 
 signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 
 def get_provider(session, prompt_row):
@@ -193,6 +201,9 @@ def process_summary(session, summary_row, http_session, md, checked_models):
             logger.exception(
                 "Vérification du modèle %s impossible chez %s", model, provider.name
             )
+            # Rattrapée, elle ne sort jamais du contexte : envoyée ici, avec
+            # l'identité du daemon et le sondage, avant d'écrire l'échec.
+            production_signals.report_caught_exception(error)
             finish_summary(
                 session, summary_row, STATUS_CONFIG_ERROR, metadata_text=str(error)
             )
@@ -247,12 +258,14 @@ def process_summary(session, summary_row, http_session, md, checked_models):
         )
     except LLMConfigError as error:
         logger.error("Fournisseur %s mal configuré : %s", provider.name, error)
+        production_signals.report_caught_exception(error)
         finish_summary(
             session, summary_row, STATUS_CONFIG_ERROR, metadata_text=str(error)
         )
         return
     except RequestException as error:
         logger.warning("Appel au fournisseur %s en échec : %s", provider.name, error)
+        production_signals.report_caught_exception(error)
         finish_summary(
             session, summary_row, STATUS_TIMEOUT, metadata_text=str(error)
         )
@@ -303,6 +316,12 @@ def main():
         format="%(levelname)s:     %(message)s",
     )
 
+    # Signaux de production, si POSTHOG_* sont réglés. Arrêtés par `atexit` et
+    # non dans un `finally` : la boucle ne se termine que par `sys.exit()`.
+    # `uvicorn.error` propage ici vers la racine, qui seule reçoit le handler.
+    production_signals.start("oceens-summaries", logger_names=("uvicorn.error",))
+    atexit.register(production_signals.stop)
+
     md = MarkdownIt()  # convertisseur markdown → HTML pour le rendu final
     http_session = build_cache_session("cache_llm.db")
 
@@ -310,33 +329,42 @@ def main():
     # durée du processus.
     checked_models = {}
 
-    logger.info("Daemon de synthèses démarré.")
+    # Tout ce que le daemon envoie porte son identité, et non celle d'un
+    # utilisateur : ses erreurs se comptent en sondages, pas en utilisateurs.
+    with production_signals.context(identity="oceens-summaries"):
+        logger.info("Daemon de synthèses démarré.")
 
-    while True:
-        with Session(engine) as session:
-            summary_row = session.exec(
-                select(Summary).where(Summary.http_status == 0)
-            ).first()
+        while True:
+            with Session(engine) as session:
+                summary_row = session.exec(
+                    select(Summary).where(Summary.http_status == 0)
+                ).first()
 
-            if not summary_row:
-                time.sleep(POLL_INTERVAL_SECONDS)
-                continue
+                if not summary_row:
+                    time.sleep(POLL_INTERVAL_SECONDS)
+                    continue
 
-            try:
-                process_summary(session, summary_row, http_session, md, checked_models)
-            except Exception:
-                # Filet de sécurité : une exception inattendue ne doit ni
-                # arrêter le daemon, ni laisser la ligne bloquée à 0.
-                logger.exception(
-                    "Erreur inattendue sur la synthèse %s", summary_row.summary_id
-                )
-                session.rollback()
-                finish_summary(
-                    session,
-                    summary_row,
-                    STATUS_CONFIG_ERROR,
-                    metadata_text="Erreur interne pendant la génération.",
-                )
+                # Le sondage traité, sur tout ce qui est envoyé pendant ce temps.
+                with production_signals.context(survey_id=summary_row.survey_id):
+                    try:
+                        process_summary(
+                            session, summary_row, http_session, md, checked_models
+                        )
+                    except Exception as error:
+                        # Filet de sécurité : une exception inattendue ne doit ni
+                        # arrêter le daemon, ni laisser la ligne bloquée à 0.
+                        logger.exception(
+                            "Erreur inattendue sur la synthèse %s",
+                            summary_row.summary_id,
+                        )
+                        production_signals.report_caught_exception(error)
+                        session.rollback()
+                        finish_summary(
+                            session,
+                            summary_row,
+                            STATUS_CONFIG_ERROR,
+                            metadata_text="Erreur interne pendant la génération.",
+                        )
 
 
 if __name__ == "__main__":

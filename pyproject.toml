@@ -21,6 +21,9 @@ dependencies = [
     "pandas==3.0.5",            # Agrégation des données et export CSV
     "requests-cache==1.3.3",    # Cache des requêtes LLM
     "markdown-it-py==4.2.0",    # Markdown du LLM converti en HTML
+    "posthog==7.60.0",          # Signaux de production : erreurs et identité vers PostHog
+    "opentelemetry-sdk==1.44.0",                       # Signaux de production : logs
+    "opentelemetry-exporter-otlp-proto-http==1.44.0",  # Logs envoyés à PostHog en OTLP
 ]
 
 # Commandes installées avec le paquet. Elles remplacent les `python fichier.py`
@@ -45,6 +48,7 @@ packages = ["src/oceens"]
 dev = [
     "pytest~=8.4",              # Lance les tests de tests/
     "tach~=0.35.0",             # Vérifie les frontières entre paquets (voir tach.toml)
+    "httpx2~=2.0",              # Requis par le TestClient de Starlette
 ]
 
 [tool.pytest.ini_options]
