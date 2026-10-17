@@ -9,6 +9,7 @@ from oceens.core.auth import get_current_user
 from oceens.core.database import SessionDep
 from oceens.models import LLMProvider, Prompt, Role, User
 from oceens.core.dependencies import logger, templates
+from oceens.core import production_signals
 from oceens.services.llm_client import (
     ERROR_AUTH,
     ERROR_QUOTA,
@@ -430,18 +431,21 @@ def test_provider(request: Request, provider_id: int, session: SessionDep):
     try:
         models = list_models(provider)
     except LLMConfigError as error:
+        production_signals.report_caught_exception(error)
         # Mauvaise config (clÃ© absente/non autorisÃ©e, type d'API inconnu)
         logger.warning("Test fournisseur %s : config invalide : %s", provider.name, error)
         return JSONResponse(
             {"ok": False, "error": "Configuration invalide (voir les logs serveur)."}
         )
     except RequestException as error:
+        production_signals.report_caught_exception(error)
         # Serveur injoignable, timeout, rÃ©ponse HTTP en erreur
         logger.warning("Test fournisseur %s : serveur injoignable : %s", provider.name, error)
         return JSONResponse(
             {"ok": False, "error": "Serveur injoignable (voir les logs serveur)."}
         )
-    except Exception:
+    except Exception as error:
+        production_signals.report_caught_exception(error)
         # Filet de sÃ©curitÃ© : rien ne doit fuiter vers le navigateur
         logger.exception("Test fournisseur %s : erreur inattendue", provider.name)
         return JSONResponse(
@@ -461,16 +465,19 @@ def test_provider(request: Request, provider_id: int, session: SessionDep):
     try:
         ok, kind, message = ping_generation(provider, model)
     except LLMConfigError as error:
+        production_signals.report_caught_exception(error)
         logger.warning("Ping fournisseur %s : config invalide : %s", provider.name, error)
         return JSONResponse(
             {"ok": False, "error": "Configuration invalide (voir les logs serveur)."}
         )
     except RequestException as error:
+        production_signals.report_caught_exception(error)
         logger.warning("Ping fournisseur %s : serveur injoignable : %s", provider.name, error)
         return JSONResponse(
             {"ok": False, "error": "Serveur injoignable (voir les logs serveur)."}
         )
-    except Exception:
+    except Exception as error:
+        production_signals.report_caught_exception(error)
         logger.exception("Ping fournisseur %s : erreur inattendue", provider.name)
         return JSONResponse(
             {"ok": False, "error": "Erreur inattendue (voir les logs serveur)."}
