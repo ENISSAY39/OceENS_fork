@@ -16,6 +16,7 @@ from oceens.services.helpers import delete_survey_with_relations
 from oceens.sondage_loader import load_sondage_complet
 from oceens.services.export_csv import generate_csv_response
 from oceens.services.visualisation_data import bilingual_text, get_visualisation_context2
+from oceens.core import production_signals
 
 router = APIRouter(tags=["API"], prefix="/api")
 
@@ -208,6 +209,7 @@ async def create_survey(
         logger.info("[SONDAGE+IMPORT] Transaction COMMIT réussie !")
 
     except Exception as e:
+        production_signals.report_caught_exception(e)
         logger.exception(
             "[SONDAGE+IMPORT] ERREUR — ROLLBACK : %s: %s",
             type(e).__name__,
@@ -646,6 +648,7 @@ def submit_reponses(
 
     except Exception as e:
         session.rollback()
+        production_signals.report_caught_exception(e)
         return JSONResponse(
             content={"error": f"Erreur lors de l'enregistrement : {str(e)}"},
             status_code=500,
@@ -755,8 +758,9 @@ def delete_survey(
     try:
         delete_survey_with_relations(session, survey_id)
         session.commit()
-    except Exception:
+    except Exception as error:
         session.rollback()
+        production_signals.report_caught_exception(error)
         return JSONResponse(
             content={"error": "Impossible de supprimer le sondage."},
             status_code=500,
